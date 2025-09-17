@@ -26,30 +26,32 @@ The project demonstrates:
 ---
 
 ## 📂 Project Structure
+```
 QuantCast/
 ├── data/
-│ ├── raw/ # raw market data from yfinance
-│ └── processed/ # engineered features (Parquet/CSV)
+│   ├── raw/                  # raw market data from yfinance
+│   └── processed/            # engineered features (Parquet/CSV)
 │
 ├── etl/
-│ ├── data_collection.py # fetch daily OHLCV data
-│ └── feature_engineering.py# build features (returns, RSI, MA, volatility)
+│   ├── data_collection.py    # fetch daily OHLCV data
+│   └── feature_engineering.py# build features (returns, RSI, MA, volatility)
 │
 ├── modeling/
-│ ├── model_training.py # ARIMA + LSTM training & backtesting
-│ └── deploy_model.py # package/export model artifacts
+│   ├── model_training.py     # ARIMA + LSTM training & backtesting
+│   └── deploy_model.py       # package/export model artifacts
 │
 ├── serving/
-│ └── batch_infer.py # daily inference (planned for AWS Lambda)
+│   └── batch_infer.py        # daily inference (planned for AWS Lambda)
 │
 ├── dashboard/
-│ └── dashboard.py # prototype dashboard (local/Matplotlib → QuickSight later)
+│   └── dashboard.py          # prototype dashboard (local/Matplotlib → QuickSight later)
 │
 ├── infra/
-│ └── README-aws-setup.md # AWS setup notes (S3, SageMaker, Lambda)
+│   └── README-aws-setup.md   # AWS setup notes (S3, SageMaker, Lambda)
 │
-├── requirements.txt # dependencies
-└── README.md # this file
+├── requirements.txt          # dependencies
+└── README.md                 # this file
+```
 
 ---
 
@@ -88,66 +90,56 @@ QuantCast/
 git clone https://github.com/yourusername/QuantCast.git
 cd QuantCast
 ```
+
 ### 2. Install Dependencies
 ```bash
 pip install -r requirements.txt
 ```
-3. Run Data Collection
+
+### 3. Run Data Collection
 ```bash
 python etl/data_collection.py
 ```
-4. Run Feature Engineering
+
+### 4. Run Feature Engineering
 ```bash
 python etl/feature_engineering.py
 ```
 
-5. Train Models
+### 5. Train Models
 ```bash
 python modeling/model_training.py
 ```
-📊 Example Output (local)
-
-Features CSV/Parquet with returns, RSI, moving averages.
-
-Plots:
-
-Predicted vs actual returns.
-
-Directional accuracy (up/down).
-
-Strategy P&L curve.
-
-🧠 Learning Outcomes
-
-Build quant-style ML models for financial time series.
-
-Apply walk-forward backtesting to avoid leakage.
-
-Practice AWS ML pipeline design (S3 → SageMaker → Lambda → QuickSight).
-
-Deploy ML models as daily prediction services.
-
-🔮 Roadmap
-
- Local data collection & feature engineering
-
- Baseline ARIMA + LSTM training
-
- Backtesting & performance evaluation
-
- AWS S3 integration
-
- SageMaker training/deployment
-
- Lambda daily batch predictions
-
- QuickSight dashboard
-
-📜 License
-
-MIT License – feel free to use and adapt.
-
 
 ---
 
-Do you want me to also include a **diagram (ASCII or simple image)** showing the pipeline flow (Data → Features → Models → Predictions → Dashboard) so it looks more “executive ready” for recruiters?
+## 📊 Example Output (local)
+- **Features CSV/Parquet** with returns, RSI, moving averages.  
+- **Plots**:
+  - Predicted vs actual returns.  
+  - Directional accuracy (up/down).  
+  - Strategy P&L curve.  
+
+---
+
+## 🧠 Learning Outcomes
+- Build **quant-style ML models** for financial time series.  
+- Apply **walk-forward backtesting** to avoid leakage.  
+- Practice **AWS ML pipeline design** (S3 → SageMaker → Lambda → QuickSight).  
+- Deploy ML models as **daily prediction services**.  
+
+---
+
+## 🔮 Roadmap
+- [x] Local data collection & feature engineering  
+- [x] Baseline ARIMA + LSTM training  
+- [ ] Backtesting & performance evaluation  
+- [ ] AWS S3 integration  
+- [ ] SageMaker training/deployment  
+- [ ] Lambda daily batch predictions  
+- [ ] QuickSight dashboard  
+
+---
+
+## 📜 License
+MIT License – feel free to use and adapt.

@@ -2,7 +2,7 @@ import os
 import pandas as pd
 import numpy as np
 
-RAW_FILE = os.path.join("data", "raw", "prices_1d_2023-01-01_latest.csv")
+RAW_FILE = os.path.join("data", "raw", "prices_1d_2020-01-01_latest.csv")
 OUT_DIR = os.path.join("data", "processed")
 OUT_FILE = os.path.join(OUT_DIR, "prices_features.csv")
 
@@ -21,25 +21,66 @@ def main():
     df = pd.read_csv(RAW_FILE, parse_dates=["Date"])
 
     # 1) sort & keep Adj Close
-    df = df.sort_values(["Ticker","Date"]).rename(columns={"Adj Close":"AdjClose"})
+    df = df.sort_values(["Ticker", "Date"]).rename(columns={"Adj Close": "AdjClose"})
+    df = df[["Date", "Ticker", "Open", "High", "Low", "Close", "AdjClose", "Volume"]]
 
-    # 2) log return per ticker
-    df["LogClose"] = np.log(df["AdjClose"])
-    df["Return"]   = df.groupby("Ticker")["LogClose"].diff()
-    # 3) features per ticker
-    df["MA7"]   = df.groupby("Ticker")["AdjClose"].transform(lambda x: x.rolling(7).mean())
-    df["MA30"]  = df.groupby("Ticker")["AdjClose"].transform(lambda x: x.rolling(30).mean())
-    df["Vol20"] = df.groupby("Ticker")["Return"].transform(lambda x: x.rolling(20).std())
-    df["RSI14"] = df.groupby("Ticker")["AdjClose"].transform(compute_rsi)
+    # 2) compute features per ticker
+    # Use a container to store processed groups
+    processed_groups = []
+    for ticker, group in df.groupby("Ticker"):
+        g = group.copy()
 
-    # 4) clean
-    keep_cols = ["Date","Ticker","Open","High","Low","Close","AdjClose","Volume",
-                 "Return","MA7","MA30","Vol20","RSI14"]
-    df = df[keep_cols].dropna()
+        # Original Features
+        g["LogClose"] = np.log(g["AdjClose"])
+        g["Return"] = g["LogClose"].diff()
+        g["MA7"] = g["AdjClose"].rolling(7).mean()
+        g["MA30"] = g["AdjClose"].rolling(30).mean()
+        g["Vol20"] = g["Return"].rolling(20).std()
+        g["RSI14"] = compute_rsi(g["AdjClose"])
 
-    # 5) write to CSV
-    df.to_csv(OUT_FILE, index=False)
-    print(f"[feature_engineering] Saved {len(df):,} rows → {OUT_FILE}")
+        # --- New Features ---
+        # Bollinger Bands
+        g["BB_Mid"] = g["AdjClose"].rolling(20).mean()
+        g["BB_Std"] = g["AdjClose"].rolling(20).std()
+        g["BB_Upper"] = g["BB_Mid"] + (2 * g["BB_Std"])
+        g["BB_Lower"] = g["BB_Mid"] - (2 * g["BB_Std"])
+
+        # MACD
+        ema12 = g["AdjClose"].ewm(span=12, adjust=False).mean()
+        ema26 = g["AdjClose"].ewm(span=26, adjust=False).mean()
+        g["MACD"] = ema12 - ema26
+        g["MACD_Signal"] = g["MACD"].ewm(span=9, adjust=False).mean()
+
+        # --- Target and Lagged Features ---
+        # Define target: next day's return
+        g["Target_Return"] = g["Return"].shift(-1)
+
+        # Lag all features by 1 day so we use current data to predict the next day
+        feature_cols = [
+            "Return", "MA7", "MA30", "Vol20", "RSI14",
+            "BB_Upper", "BB_Lower", "MACD", "MACD_Signal"
+        ]
+        for col in feature_cols:
+            g[f"{col}_lag1"] = g[col].shift(1)
+
+        processed_groups.append(g)
+
+    # 3) combine and clean
+    df_featured = pd.concat(processed_groups)
+    
+    # Select final columns (lagged features + target)
+    final_cols = [
+        "Date", "Ticker", "AdjClose", "Target_Return"
+    ] + [f"{col}_lag1" for col in [
+            "Return", "MA7", "MA30", "Vol20", "RSI14",
+            "BB_Upper", "BB_Lower", "MACD", "MACD_Signal"
+    ]]
+    
+    df_final = df_featured[final_cols].dropna()
+
+    # 4) write to CSV
+    df_final.to_csv(OUT_FILE, index=False)
+    print(f"[feature_engineering] Saved {len(df_final):,} rows → {OUT_FILE}")
 
 
 if __name__ == "__main__":

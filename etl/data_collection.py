@@ -12,8 +12,8 @@ import pandas as pd
 import yfinance as yf
 
 # -------- Settings --------
-TICKERS: List[str] = ["AAPL", "BTC-USD"]  # edit as you like
-START_DATE: str = "2023-01-01"
+TICKERS: List[str] = ["AAPL", "INTC"]  # edit as you like
+START_DATE: str = "2020-01-01"
 END_DATE: Optional[str] = None      # None => latest
 INTERVAL: str = "1d"                # "1d", "1h", "30m", etc.
 OUT_DIR: str = os.path.join("data", "raw")

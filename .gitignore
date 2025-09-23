@@ -1,0 +1,3 @@
+﻿data/processed/*
+data/reports/*
+!data/processed/prices_features_public.csv

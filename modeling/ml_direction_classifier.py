@@ -1,10 +1,12 @@
 # modeling/ml_direction_classifier.py
 import os
+from datetime import datetime
+from typing import Dict, Tuple, List, Optional
+
 import numpy as np
 import pandas as pd
-from typing import Dict, Tuple, List
-from datetime import datetime
 from pandas.tseries.offsets import BDay
+
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
@@ -19,6 +21,7 @@ from sklearn.metrics import (
     roc_auc_score,
     confusion_matrix,
 )
+
 from utils.utils_s3 import s3_upload_if_configured
 
 DATA_PATH = os.path.join("data", "processed", "prices_features.csv")
@@ -45,14 +48,13 @@ def select_features(df: pd.DataFrame) -> List[str]:
 def train_val_split_time(X: np.ndarray, y: np.ndarray, val_frac: float = 0.15) -> Tuple:
     n = len(X)
     cut = int((1 - val_frac) * n)
-    return X[:cut], X[cut:], y[:cut], y[cut:]
+    return X[:cut], X[cut:], y[:cut], y[:cut] * 0 + y[cut:]  # y_tr, y_val (keep order)
 
 def threshold_max_balacc(p_val: np.ndarray, y_val: np.ndarray) -> float:
     """
     Pick the probability threshold that maximizes balanced accuracy on VALIDATION.
-    No prevalence constraints; directly balances TPR and TNR.
     """
-    grid = np.clip(np.linspace(0.15, 0.85, 301), 1e-3, 1-1e-3)
+    grid = np.clip(np.linspace(0.15, 0.85, 301), 1e-3, 1 - 1e-3)
     best_t, best_s = 0.5, -1.0
     for t in grid:
         y_hat = (p_val >= t).astype(int)
@@ -131,15 +133,11 @@ def run_for_ticker(df_ticker: pd.DataFrame) -> pd.DataFrame:
     # Time-ordered calibration split inside TRAIN
     X_tr, X_val, y_tr, y_val = train_val_split_time(X_train, y_train, val_frac=0.15)
 
-    # ----- Logistic Regression: L1, stronger reg; Platt calibration -----
+    # ----- Logistic Regression: L1 + Platt calibration -----
     base_logit = Pipeline([
         ("scaler", StandardScaler()),
         ("clf", LogisticRegression(
-            max_iter=2000,
-            C=0.1,                 # stronger than before
-            penalty="l1",          # sparsity to curb bias
-            solver="saga",         # supports L1
-            class_weight=None,
+            max_iter=2000, C=0.1, penalty="l1", solver="saga", class_weight=None
         )),
     ])
     base_logit.fit(X_tr, y_tr)
@@ -154,13 +152,9 @@ def run_for_ticker(df_ticker: pd.DataFrame) -> pd.DataFrame:
     print(f"[{ticker}][LogReg+cal L1] thr={thr_logit:.3f} | pred_pos_rate_test={pred_pos_rate_logit:.3f}")
     m_logit = evaluate(y_test, p_test_logit, threshold=thr_logit)
 
-    # ----- RandomForest: more conservative; Platt calibration -----
+    # ----- RandomForest + Platt calibration -----
     rf_base = RandomForestClassifier(
-        n_estimators=600,
-        max_depth=8,            # shallower than last
-        min_samples_leaf=20,    # leafier than last
-        random_state=42,
-        n_jobs=-1,
+        n_estimators=600, max_depth=8, min_samples_leaf=20, random_state=42, n_jobs=-1
     )
     rf_base.fit(X_tr, y_tr)
     rf_cal = CalibratedClassifierCV(rf_base, cv="prefit", method="sigmoid")
@@ -193,7 +187,7 @@ def run_for_ticker(df_ticker: pd.DataFrame) -> pd.DataFrame:
     ]
     return pd.DataFrame(rows)
 
-# ---------- entrypoint ----------
+# ---------- script entrypoint (metrics report) ----------
 def main():
     df = pd.read_csv(DATA_PATH, parse_dates=["Date"])
     if "Target_Return" not in df.columns:
@@ -227,15 +221,14 @@ def main():
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     report.to_csv(out_path, index=False)
     print(f"\n[saved] {out_path}")
-    report.to_csv(out_path, index=False)
     s3_upload_if_configured(out_path, f"reports/{os.path.basename(out_path)}")
-    
-    
-    
+
+# ---------- API used by dashboard ----------
+
 def _train_and_choose_model(df_ticker: pd.DataFrame):
     """
-    Train both (LogReg L1 + cal) and (RF + cal), choose the one with better
-    validation balanced accuracy. Return (best_model, best_thr, info_dict).
+    Train both (LogReg L1 + cal) and (RF + cal), choose by validation balanced accuracy.
+    Return (best_model, best_thr, info_dict).
     """
     df_t = df_ticker.sort_values("Date").copy()
     df_t["y"] = (df_t["Target_Return"] > 0).astype(int)
@@ -257,12 +250,10 @@ def _train_and_choose_model(df_ticker: pd.DataFrame):
     # time-ordered val split inside train
     X_tr, X_val, y_tr, y_val = train_val_split_time(X_train, y_train, val_frac=0.15)
 
-    # --- model A: LogReg(L1) + Platt
+    # model A
     base_logit = Pipeline([
         ("scaler", StandardScaler()),
-        ("clf", LogisticRegression(
-            max_iter=2000, C=0.1, penalty="l1", solver="saga", class_weight=None
-        )),
+        ("clf", LogisticRegression(max_iter=2000, C=0.1, penalty="l1", solver="saga", class_weight=None)),
     ])
     base_logit.fit(X_tr, y_tr)
     logit_cal = CalibratedClassifierCV(base_logit, cv="prefit", method="sigmoid")
@@ -271,10 +262,8 @@ def _train_and_choose_model(df_ticker: pd.DataFrame):
     thr_a = threshold_max_balacc(p_val_a, y_val)
     balacc_a = balanced_accuracy_score(y_val, (p_val_a >= thr_a).astype(int))
 
-    # --- model B: RF + Platt
-    rf_base = RandomForestClassifier(
-        n_estimators=600, max_depth=8, min_samples_leaf=20, random_state=42, n_jobs=-1
-    )
+    # model B
+    rf_base = RandomForestClassifier(n_estimators=600, max_depth=8, min_samples_leaf=20, random_state=42, n_jobs=-1)
     rf_base.fit(X_tr, y_tr)
     rf_cal = CalibratedClassifierCV(rf_base, cv="prefit", method="sigmoid")
     rf_cal.fit(X_val, y_val)
@@ -287,8 +276,10 @@ def _train_and_choose_model(df_ticker: pd.DataFrame):
     else:
         return rf_cal, float(thr_b), {"model": "RF+cal", "bal_acc_val": float(balacc_b)}
 
-
-def predict_for_tickers(tickers: List[str] = None, df: pd.DataFrame | None = None) -> List[Dict]:
+def predict_for_tickers(
+    tickers: Optional[List[str]] = None,
+    df: Optional[pd.DataFrame] = None
+) -> List[Dict]:
     """
     Returns a list of dicts:
       {date, ticker, prediction, probability, price, as_of}
@@ -318,8 +309,10 @@ def predict_for_tickers(tickers: List[str] = None, df: pd.DataFrame | None = Non
 
             last_date = g["Date"].max()
             next_date = (last_date + BDay(1)).date().isoformat()
-            price = float(g.iloc[-1][g.columns[g.columns.str.lower().isin(["close","adj close"])][0]]) \
-                    if any(c.lower() in ("close","adj close") for c in g.columns) else float("nan")
+
+            # try to find a price-like column
+            lc = [c for c in g.columns if c.lower() in ("close", "adj close", "adj_close", "adjclose")]
+            price = float(g.iloc[-1][lc[0]]) if lc else float("nan")
 
             out.append({
                 "date": next_date,

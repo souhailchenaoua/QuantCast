@@ -31,6 +31,8 @@ jobs:
           if [ -f requirements.txt ]; then pip install --no-deps -r requirements.txt; fi
 
       - name: Build dashboard (writes ./public/index.html)
+        env:
+          PRICES_FEATURES_PATH: data/processed/prices_features_public.csv
         run: |
           python -m dashboard.dashboard
           test -f public/index.html
@@ -39,7 +41,7 @@ jobs:
         uses: actions/upload-pages-artifact@v3
         with:
           path: ./public
-          
+
 
   deploy:
     environment:

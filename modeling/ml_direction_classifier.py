@@ -24,7 +24,10 @@ from sklearn.metrics import (
 
 from utils.utils_s3 import s3_upload_if_configured
 
-DATA_PATH = os.path.join("data", "processed", "prices_features.csv")
+DATA_PATH = os.getenv(
+    "PRICES_FEATURES_PATH",
+    os.path.join("data","processed","prices_features.csv")
+)
 
 PREFERRED_FEATURES = [
     "Return_lag1","MA7_lag1","MA30_lag1","Vol20_lag1","RSI14_lag1",
@@ -48,7 +51,8 @@ def select_features(df: pd.DataFrame) -> List[str]:
 def train_val_split_time(X: np.ndarray, y: np.ndarray, val_frac: float = 0.15) -> Tuple:
     n = len(X)
     cut = int((1 - val_frac) * n)
-    return X[:cut], X[cut:], y[:cut], y[:cut] * 0 + y[cut:]  # y_tr, y_val (keep order)
+    # time-ordered split: [0:cut) = train, [cut:n) = val
+    return X[:cut], X[cut:], y[:cut], y[cut:]
 
 def threshold_max_balacc(p_val: np.ndarray, y_val: np.ndarray) -> float:
     """

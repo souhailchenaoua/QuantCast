@@ -1,4 +1,5 @@
 from __future__ import annotations
+import math
 
 # --- make project root importable (so "modeling" resolves) ---
 import sys, pathlib
@@ -23,6 +24,39 @@ DEFAULT_TICKERS = ["AAPL", "MSFT", "BTC-USD"]
 AS_OF = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
 # ---------- helpers ----------
+def load_arima_public(path: str) -> dict[str, float]:
+    """
+    Load 'Ticker, ForecastDate, PredictedClose' and return {ticker: predicted_close}.
+    """
+    try:
+        import pandas as pd
+        df = pd.read_csv(path, parse_dates=["ForecastDate"])
+        out = {}
+        for tkr, g in df.groupby("Ticker"):
+            g = g.sort_values("ForecastDate")
+            out[str(tkr)] = float(g["PredictedClose"].iloc[-1])
+        return out
+    except Exception as e:
+        print("[dashboard] ARIMA public load failed:", e)
+        return {}
+
+def fetch_live_price(ticker: str, fallback: float | None = None) -> float | None:
+    """
+    Try yfinance for the latest price; fall back to provided value.
+    """
+    try:
+        import yfinance as yf
+        info = yf.Ticker(ticker)
+        px = info.fast_info.get("last_price") or info.fast_info.get("last_close")
+        if px is None and hasattr(info, "history"):
+            h = info.history(period="1d")
+            if not h.empty and "Close" in h.columns:
+                px = float(h["Close"].iloc[-1])
+        return float(px) if px is not None and not (isinstance(px, float) and math.isnan(px)) else fallback
+    except Exception as e:
+        print(f"[dashboard] yfinance failed for {ticker}: {e}")
+        return fallback
+    
 def _normalize_row(row: Dict[str, Any]) -> Dict[str, Any]:
     """Coerce a prediction row into canonical schema."""
     out: Dict[str, Any] = {}
@@ -123,13 +157,18 @@ def write_outputs(rows: List[Dict[str, Any]]) -> None:
         elif pred in ("DOWN", "SELL"):
             pill = "pill down"
         rows_html.append(f"""
-        <tr>
-          <td><span class="muted">{r.get('date','')}</span></td>
-          <td class="ticker">{r.get('ticker','')}</td>
-          <td><span class="{pill}">{pred}</span></td>
-          <td class="right">{fmt_prob(r.get('probability'))}</td>
-          <td class="right">{("" if r.get('price') is None else r.get('price'))}</td>
-        </tr>""")
+<tr>
+  <td><span class="muted">{r.get('date','')}</span></td>
+  <td class="ticker">{r.get('ticker','')}</td>
+  <td><span class="{pill}">{pred}</span></td>
+  <td class="right">{fmt_prob(r.get('probability'))}</td>
+  <td class="right">{("" if r.get('price') is None else round(float(r['price']), 2))}</td>
+  <td class="right">{("" if r.get('arima_pred') is None else round(float(r['arima_pred']), 3))}</td>
+  <td class="right">{("" if r.get('arima_delta_pct') is None else f"{float(r['arima_delta_pct']):.2f}%")}</td>
+  <td class="right">{("" if r.get('live_price') is None else round(float(r['live_price']), 3))}</td>
+</tr>
+""")
+
     rows_html = "\n".join(rows_html)
 
     html = f"""<!doctype html>
@@ -162,7 +201,13 @@ tr:hover td {{ background:#0e1525; }}
       <div class="meta">Generated: <strong>{AS_OF}</strong> | Model as-of: <strong>{as_of}</strong> | Rows: <strong>{len(norm)}</strong></div>
       <div style="overflow:auto; max-height:75vh;">
         <table>
-          <thead><tr><th>Date</th><th>Ticker</th><th>Prediction</th><th class="right">Confidence</th><th class="right">Ref Price</th></tr></thead>
+          <thead>
+          <tr><th>Date</th><th>Ticker</th><th>Prediction</th><th class="right">Confidence</th><th class="right">Ref Price</th> <th class="right">Confidence</th>
+  <th class="right">Ref Price</th>
+  <th class="right">ARIMA Pred</th>
+  <th class="right">Δ% (ARIMA vs Ref)</th>
+  <th class="right">Live Price</th></tr>
+          </thead>
           <tbody>{rows_html}</tbody>
         </table>
       </div>
@@ -179,8 +224,32 @@ tr:hover td {{ background:#0e1525; }}
 def main():
     tickers = os.getenv("TICKERS", ",".join(DEFAULT_TICKERS)).split(",")
     tickers = [t.strip().upper() for t in tickers if t.strip()]
+
+    # 1) direction predictions
     rows = run_inference(tickers)
+
+    # 2) ARIMA one-step forecast (public)
+    arima_path = os.getenv("ARIMA_PUBLIC_PATH", os.path.join(ROOT.parent, "data", "processed", "arima_results_public.csv"))
+    arima_map = load_arima_public(arima_path)
+
+    # 3) decorate rows with arima_pred & live price
+    for r in rows:
+        tkr = r.get("ticker")
+        ref_price = r.get("price")
+        # ARIMA predicted close
+        apred = arima_map.get(tkr)
+        r["arima_pred"] = apred
+        r["arima_delta_pct"] = None
+        if apred is not None and ref_price not in (None, 0):
+            try:
+                r["arima_delta_pct"] = 100.0 * (apred - float(ref_price)) / float(ref_price)
+            except Exception:
+                pass
+        # live price
+        r["live_price"] = fetch_live_price(tkr, fallback=ref_price)
+
     write_outputs(rows)
+
 
 if __name__ == "__main__":
     main()

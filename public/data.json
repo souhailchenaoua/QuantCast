@@ -1,6 +1,23 @@
 {
-  "generated_at": "2025-09-23T22:12:14Z",
-  "as_of": "2025-09-23T22:12:14Z",
-  "count": 0,
-  "predictions": []
+  "generated_at": "2025-09-23T22:31:45Z",
+  "as_of": "2025-09-23T22:31:45Z",
+  "count": 2,
+  "predictions": [
+    {
+      "ticker": "INTC",
+      "date": "2025-09-23",
+      "prediction": "UP",
+      "probability": 0.524943017562245,
+      "price": 28.76000022888184,
+      "as_of": "2025-09-23T22:31:45Z"
+    },
+    {
+      "ticker": "AAPL",
+      "date": "2025-09-23",
+      "prediction": "UP",
+      "probability": 0.6769190277059883,
+      "price": 256.0799865722656,
+      "as_of": "2025-09-23T22:31:45Z"
+    }
+  ]
 }

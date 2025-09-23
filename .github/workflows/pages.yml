@@ -33,6 +33,7 @@ jobs:
       - name: Build dashboard (writes ./public/index.html)
         env:
           PRICES_FEATURES_PATH: data/processed/prices_features_public.csv
+          TICKERS: AAPL,MSFT,INTC,BTC-USD
         run: |
           python -m dashboard.dashboard
           test -f public/index.html

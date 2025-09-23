@@ -3,7 +3,8 @@ import os
 import numpy as np
 import pandas as pd
 from typing import Dict, Tuple, List
-
+from datetime import datetime
+from pandas.tseries.offsets import BDay
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import StandardScaler
 from sklearn.linear_model import LogisticRegression
@@ -18,6 +19,7 @@ from sklearn.metrics import (
     roc_auc_score,
     confusion_matrix,
 )
+from utils.utils_s3 import s3_upload_if_configured
 
 DATA_PATH = os.path.join("data", "processed", "prices_features.csv")
 
@@ -225,6 +227,115 @@ def main():
     os.makedirs(os.path.dirname(out_path), exist_ok=True)
     report.to_csv(out_path, index=False)
     print(f"\n[saved] {out_path}")
+    report.to_csv(out_path, index=False)
+    s3_upload_if_configured(out_path, f"reports/{os.path.basename(out_path)}")
+    
+    
+    
+def _train_and_choose_model(df_ticker: pd.DataFrame):
+    """
+    Train both (LogReg L1 + cal) and (RF + cal), choose the one with better
+    validation balanced accuracy. Return (best_model, best_thr, info_dict).
+    """
+    df_t = df_ticker.sort_values("Date").copy()
+    df_t["y"] = (df_t["Target_Return"] > 0).astype(int)
+    FEATURES = select_features(df_t)
+    if not FEATURES:
+        raise ValueError("No feature columns found to predict.")
+
+    n = len(df_t)
+    if n < 300:
+        raise ValueError(f"Not enough samples ({n}). Need >= 300.")
+
+    split = int(n * 0.8)
+    X = df_t[FEATURES].values
+    y = df_t["y"].values
+
+    X_train, X_test = X[:split], X[split:]
+    y_train, y_test = y[:split], y[split:]
+
+    # time-ordered val split inside train
+    X_tr, X_val, y_tr, y_val = train_val_split_time(X_train, y_train, val_frac=0.15)
+
+    # --- model A: LogReg(L1) + Platt
+    base_logit = Pipeline([
+        ("scaler", StandardScaler()),
+        ("clf", LogisticRegression(
+            max_iter=2000, C=0.1, penalty="l1", solver="saga", class_weight=None
+        )),
+    ])
+    base_logit.fit(X_tr, y_tr)
+    logit_cal = CalibratedClassifierCV(base_logit, cv="prefit", method="sigmoid")
+    logit_cal.fit(X_val, y_val)
+    p_val_a = logit_cal.predict_proba(X_val)[:, 1]
+    thr_a = threshold_max_balacc(p_val_a, y_val)
+    balacc_a = balanced_accuracy_score(y_val, (p_val_a >= thr_a).astype(int))
+
+    # --- model B: RF + Platt
+    rf_base = RandomForestClassifier(
+        n_estimators=600, max_depth=8, min_samples_leaf=20, random_state=42, n_jobs=-1
+    )
+    rf_base.fit(X_tr, y_tr)
+    rf_cal = CalibratedClassifierCV(rf_base, cv="prefit", method="sigmoid")
+    rf_cal.fit(X_val, y_val)
+    p_val_b = rf_cal.predict_proba(X_val)[:, 1]
+    thr_b = threshold_max_balacc(p_val_b, y_val)
+    balacc_b = balanced_accuracy_score(y_val, (p_val_b >= thr_b).astype(int))
+
+    if balacc_a >= balacc_b:
+        return logit_cal, float(thr_a), {"model": "LogReg(L1)+cal", "bal_acc_val": float(balacc_a)}
+    else:
+        return rf_cal, float(thr_b), {"model": "RF+cal", "bal_acc_val": float(balacc_b)}
+
+
+def predict_for_tickers(tickers: List[str] = None, df: pd.DataFrame | None = None) -> List[Dict]:
+    """
+    Returns a list of dicts:
+      {date, ticker, prediction, probability, price, as_of}
+    - date: next business day after the last row in data for that ticker
+    - prediction: 'UP' or 'DOWN' (using chosen model + threshold)
+    - probability: calibrated probability of UP
+    - price: last known Close (if present), else NaN
+    """
+    if df is None:
+        df = pd.read_csv(DATA_PATH, parse_dates=["Date"])
+    if "Target_Return" not in df.columns:
+        raise ValueError("Missing 'Target_Return' in processed CSV.")
+
+    want = set(tickers) if tickers else set(df["Ticker"].unique())
+    out: List[Dict] = []
+    now_iso = datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+    for tkr, g in df.groupby("Ticker"):
+        if tkr not in want:
+            continue
+        try:
+            model, thr, info = _train_and_choose_model(g)
+            FEATURES = select_features(g)
+            X_last = g.sort_values("Date").iloc[-1:][FEATURES].values  # latest row features
+            p_up = float(model.predict_proba(X_last)[:, 1][0])
+            pred = "UP" if p_up >= thr else "DOWN"
+
+            last_date = g["Date"].max()
+            next_date = (last_date + BDay(1)).date().isoformat()
+            price = float(g.iloc[-1][g.columns[g.columns.str.lower().isin(["close","adj close"])][0]]) \
+                    if any(c.lower() in ("close","adj close") for c in g.columns) else float("nan")
+
+            out.append({
+                "date": next_date,
+                "ticker": tkr,
+                "prediction": pred,
+                "probability": p_up,
+                "price": price,
+                "as_of": now_iso,
+                "model_used": info["model"],
+                "thr": thr,
+                "bal_acc_val": info["bal_acc_val"],
+            })
+        except Exception as e:
+            print(f"[WARN] predict_for_tickers: skipping {tkr}: {e}")
+
+    return out
 
 if __name__ == "__main__":
     main()

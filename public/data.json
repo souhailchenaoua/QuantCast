@@ -1,0 +1,15 @@
+{
+  "generated_at": "2025-09-23T20:09:21Z",
+  "as_of": "2025-09-23T20:09:21Z",
+  "count": 1,
+  "predictions": [
+    {
+      "ticker": "AAPL",
+      "date": "2025-09-18",
+      "prediction": "UP",
+      "probability": 0.6470256314257894,
+      "price": NaN,
+      "as_of": "2025-09-23T20:09:21Z"
+    }
+  ]
+}

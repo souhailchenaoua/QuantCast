@@ -2,6 +2,7 @@
 import os
 import pandas as pd
 import numpy as np
+from utils.utils_s3 import s3_upload_if_configured
 
 # Optional: you imported ta before, but we don't strictly need it here.
 # import ta
@@ -107,5 +108,8 @@ def main():
     df_final.to_csv(OUT_FILE, index=False)
     print(f"[feature_engineering] Saved {len(df_final):,} rows → {OUT_FILE}")
 
+    df_final.to_csv(OUT_FILE, index=False)
+    s3_upload_if_configured(OUT_FILE, f"processed/{os.path.basename(OUT_FILE)}")
+    
 if __name__ == "__main__":
     main()

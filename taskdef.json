@@ -1,0 +1,36 @@
+{
+    "family":  "quantcast-task",
+    "networkMode":  "awsvpc",
+    "requiresCompatibilities":  [
+                                    "FARGATE"
+                                ],
+    "cpu":  "1024",
+    "memory":  "2048",
+    "executionRoleArn":  "arn:aws:iam::974916067527:role/ecsTaskExecutionRole",
+    "taskRoleArn":  "arn:aws:iam::974916067527:role/ecsTaskRole-quantcast",
+    "containerDefinitions":  [
+                                 {
+                                     "environment":  [
+                                                         {
+                                                             "value":  "us-east-1",
+                                                             "name":  "AWS_REGION"
+                                                         },
+                                                         {
+                                                             "value":  "quantcast-bucket",
+                                                             "name":  "S3_BUCKET"
+                                                         }
+                                                     ],
+                                     "logConfiguration":  {
+                                                              "logDriver":  "awslogs",
+                                                              "options":  {
+                                                                              "awslogs-region":  "us-east-1",
+                                                                              "awslogs-stream-prefix":  "ecs",
+                                                                              "awslogs-group":  "/ecs/quantcast"
+                                                                          }
+                                                          },
+                                     "name":  "pipeline",
+                                     "essential":  true,
+                                     "image":  "974916067527.dkr.ecr.us-east-1.amazonaws.com/quantcast-pipeline:latest"
+                                 }
+                             ]
+}

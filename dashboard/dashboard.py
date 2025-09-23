@@ -31,28 +31,29 @@ AS_OF = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 # =========================
 # Helpers
 # =========================
-def load_arima_public(path: str) -> Dict[str, float]:
+def load_arima_public(path: str) -> dict[str, float]:
     """
-    Load 'Ticker, ForecastDate, PredictedClose' and return {ticker: latest_predicted_close}.
-    Safe no-op if file missing or malformed.
+    Load 'Ticker, ForecastDate/Date, PredictedClose' and return {ticker: predicted_close}.
     """
-    out: Dict[str, float] = {}
     try:
         import pandas as pd
-        if not os.path.exists(path):
-            return out
-        df = pd.read_csv(path, parse_dates=["ForecastDate"])
-        if df.empty or "Ticker" not in df.columns or "PredictedClose" not in df.columns:
-            return out
+        df = pd.read_csv(path)
+
+        # normalize column names
+        df = df.rename(columns={"Date": "ForecastDate", "PredClose": "PredictedClose"})
+        if "ForecastDate" not in df.columns or "PredictedClose" not in df.columns:
+            raise ValueError("Missing required columns in ARIMA file")
+
+        df["ForecastDate"] = pd.to_datetime(df["ForecastDate"])
+        out = {}
         for tkr, g in df.groupby("Ticker"):
             g = g.sort_values("ForecastDate")
-            try:
-                out[str(tkr).upper()] = float(g["PredictedClose"].iloc[-1])
-            except Exception:
-                pass
+            out[str(tkr)] = float(g["PredictedClose"].iloc[-1])
+        return out
     except Exception as e:
         print("[dashboard] ARIMA public load failed:", e)
-    return out
+        return {}
+
 
 
 def fetch_live_price(ticker: str, fallback: Optional[float] = None) -> Optional[float]:

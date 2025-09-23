@@ -1,18 +1,21 @@
 import pandas as pd, os
 
-src = r"data/processed/prices_features.csv"
-dst = r"data/processed/prices_features_public.csv"
-
-df = pd.read_csv(src, parse_dates=["Date"])
+# features -> public
+feat_src = r"data/processed/prices_features.csv"
+feat_dst = r"data/processed/prices_features_public.csv"
+df = pd.read_csv(feat_src, parse_dates=["Date"])
 keep = ["AAPL","MSFT","INTC","BTC-USD"]
-df = df[df["Ticker"].isin(keep)].sort_values(["Ticker","Date"])
-df = df.groupby("Ticker").tail(1000)  # ensure >=300 rows for training
-df.to_csv(dst, index=False)
-print("✅ wrote", dst, "rows:", len(df))
+df = df[df["Ticker"].isin(keep)].sort_values(["Ticker","Date"]).groupby("Ticker").tail(1000)
+df.to_csv(feat_dst, index=False)
+print(" wrote", feat_dst, "rows:", len(df))
 
-# also copy ARIMA results if needed
-arima_src = r"data/processed/arima_results.csv"
-arima_dst = r"data/processed/arima_results_public.csv"
-if os.path.exists(arima_src):
-    pd.read_csv(arima_src).to_csv(arima_dst, index=False)
-    print("✅ wrote", arima_dst)
+# ARIMA -> public (accept a few column name variants)
+ar_src = r"data/processed/arima_results.csv"
+ar_dst = r"data/processed/arima_results_public.csv"
+if os.path.exists(ar_src):
+    ar = pd.read_csv(ar_src)
+    ar = ar.rename(columns={"Date":"ForecastDate", "PredClose":"PredictedClose"})
+    ar.to_csv(ar_dst, index=False)
+    print(" wrote", ar_dst, "rows:", len(ar))
+else:
+    print(" missing", ar_src)

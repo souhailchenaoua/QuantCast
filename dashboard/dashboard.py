@@ -31,29 +31,61 @@ AS_OF = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 # =========================
 # Helpers
 # =========================
-def load_arima_public(path: str) -> dict[str, float]:
+def load_arima_public(path: str) -> Dict[str, float]:
     """
-    Load 'Ticker, ForecastDate/Date, PredictedClose' and return {ticker: predicted_close}.
+    Load an ARIMA CSV and return {ticker: latest_predicted_close}.
+    Accepts columns:
+      - Ticker
+      - ForecastDate or Date
+      - PredictedClose (or PredClose)
     """
+    out: Dict[str, float] = {}
     try:
         import pandas as pd
+        if not os.path.exists(path):
+            print(f"[dashboard] ARIMA file not found: {path}")
+            return out
+
         df = pd.read_csv(path)
 
-        # normalize column names
-        df = df.rename(columns={"Date": "ForecastDate", "PredClose": "PredictedClose"})
-        if "ForecastDate" not in df.columns or "PredictedClose" not in df.columns:
-            raise ValueError("Missing required columns in ARIMA file")
+        # Normalize column names (strip + lowercase)
+        norm_cols = {c: c.strip().lower() for c in df.columns}
+        df.rename(columns=norm_cols, inplace=True)
 
-        df["ForecastDate"] = pd.to_datetime(df["ForecastDate"])
-        out = {}
-        for tkr, g in df.groupby("Ticker"):
+        # Map to canonical names
+        col_map = {}
+        # date column
+        if "forecastdate" in df.columns:
+            col_map["forecastdate"] = "ForecastDate"
+        elif "date" in df.columns:
+            col_map["date"] = "ForecastDate"
+        # predicted close column
+        if "predictedclose" in df.columns:
+            col_map["predictedclose"] = "PredictedClose"
+        elif "predclose" in df.columns:
+            col_map["predclose"] = "PredictedClose"
+        # ticker
+        if "ticker" not in df.columns:
+            raise ValueError("Missing 'Ticker' in ARIMA file")
+
+        if "ForecastDate" not in col_map.values() or "PredictedClose" not in col_map.values():
+            raise ValueError("Missing required date/pred columns in ARIMA file")
+
+        df.rename(columns=col_map, inplace=True)
+        df["ForecastDate"] = pd.to_datetime(df["ForecastDate"], errors="coerce")
+        df = df.dropna(subset=["ForecastDate", "PredictedClose"])
+
+        for tkr, g in df.groupby(df["ticker"].astype(str).str.upper()):
             g = g.sort_values("ForecastDate")
-            out[str(tkr)] = float(g["PredictedClose"].iloc[-1])
+            try:
+                out[tkr] = float(g["PredictedClose"].iloc[-1])
+            except Exception:
+                pass
         return out
-    except Exception as e:
-        print("[dashboard] ARIMA public load failed:", e)
-        return {}
 
+    except Exception as e:
+        print(f"[dashboard] ARIMA public load failed ({path}):", e)
+        return {}
 
 
 def fetch_live_price(ticker: str, fallback: Optional[float] = None) -> Optional[float]:

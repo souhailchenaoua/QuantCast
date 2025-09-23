@@ -1,13 +1,13 @@
-﻿import os, pandas as pd
+﻿import pandas as pd, os
 
-SRC = r"data/processed/prices_features.csv"
-DST = r"data/processed/prices_features_public.csv"
+src = r"data/processed/prices_features.csv"
+dst = r"data/processed/prices_features_public.csv"
 
-df = pd.read_csv(SRC, parse_dates=["Date"])
-keep = ["AAPL","MSFT","BTC-USD"]  # pick what you’re OK publishing
+df = pd.read_csv(src, parse_dates=["Date"])
+keep = ["AAPL","MSFT","BTC-USD","INTC"]   # 👈 add INTC here
 df = df[df["Ticker"].isin(keep)].sort_values(["Ticker","Date"])
-df = df.groupby("Ticker").tail(500)   # >=300 so training path runs
+df = df.groupby("Ticker").tail(200)       # last 200 rows per ticker
 
-os.makedirs(os.path.dirname(DST), exist_ok=True)
-df.to_csv(DST, index=False)
-print(f"✅ Wrote {DST} rows: {len(df)}")
+os.makedirs(os.path.dirname(dst), exist_ok=True)
+df.to_csv(dst, index=False)
+print("✅ Wrote", dst, "rows:", len(df))

@@ -1,15 +1,15 @@
 {
-  "generated_at": "2025-09-23T21:42:56Z",
-  "as_of": "2025-09-23T21:42:56Z",
+  "generated_at": "2025-09-23T21:49:55Z",
+  "as_of": "2025-09-23T21:49:55Z",
   "count": 1,
   "predictions": [
     {
       "ticker": "AAPL",
       "date": "2025-09-23",
       "prediction": "DOWN",
-      "probability": 0.5576104950610382,
+      "probability": 0.5576226805528663,
       "price": 256.0799865722656,
-      "as_of": "2025-09-23T21:42:56Z"
+      "as_of": "2025-09-23T21:49:55Z"
     }
   ]
 }

@@ -1,3 +1,2 @@
-as_of,date,ticker,prediction,probability,price,arima_pred,arima_delta_pct,live_price
-2025-09-24T12:03:34Z,2025-09-23,INTC,UP,0.5083526448625388,28.76000022888184,28.765,0.016,29.34
-2025-09-24T12:03:34Z,2025-09-23,AAPL,DOWN,0.4924173598728425,256.0799865722656,256.472,0.153,254.43
+Generated_At,Target_Date,Ticker,Prediction_Direction_Tomorrow,Confidence_Score,Reference_Price_Close,ARIMA_Predicted_Price_TomorrowClose,ARIMA_Change_Pct,Live_Price,Prediction_Target,Reference_Price_Basis,ARIMA_Forecast_Basis
+2025-09-24T21:25:31Z,2025-09-23,AAPL,DOWN,0.4924197450423727,256.0799865722656,256.472,0.153,252.31,Tomorrow Close (next trading session),Today Close (yfinance Close/Adj Close),Tomorrow Close (ARIMA)

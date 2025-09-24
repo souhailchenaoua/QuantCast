@@ -12,7 +12,7 @@ import pandas as pd
 import yfinance as yf
 
 # -------- Settings --------
-TICKERS: List[str] = ["AAPL", "INTC"]  # edit as you like
+TICKERS: List[str] = ["AAPL", "INTC", "MSFT", "GOOGL", "TSLA", "AMZN", "NVDA", "META", "BTC-USD", "ETH-USD"] # edit as you like
 START_DATE: str = "2020-01-01"
 END_DATE: Optional[str] = None      # None => latest
 INTERVAL: str = "1d"                # "1d", "1h", "30m", etc.

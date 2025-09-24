@@ -19,23 +19,30 @@ tr:hover td { background:#0e1525; }
 .muted { color:var(--muted); }
 .right { text-align:right; }
 .ticker { font-weight:700; letter-spacing:.3px; }
-.footer { color:var(--muted); font-size:12px; margin-top:12px; }
+.footer { color:var(--muted); font-size:12px; margin-top:12px; line-height:1.4; }
+.legend small { display:block; color:#9aa6b2; }
 </style></head>
 <body>
   <div class="wrap">
     <div class="card">
       <h1>QuantCast — Predictions</h1>
-      <div class="meta">Generated: <strong>2025-09-24T12:03:34Z</strong> | Model as-of: <strong>2025-09-24T12:03:34Z</strong> | Rows: <strong>2</strong></div>
+      <div class="meta">Generated: <strong>2025-09-24T21:25:31Z</strong> | Model as-of: <strong>2025-09-24T21:25:31Z</strong> | Rows: <strong>1</strong></div>
+      <div class="legend" style="margin:8px 0 16px;">
+        <small><strong>Prediction Target:</strong> Tomorrow Close (next trading session)</small>
+        <small><strong>Reference Price:</strong> Today Close (yfinance Close/Adj Close)</small>
+        <small><strong>ARIMA Forecast:</strong> Tomorrow Close (ARIMA)</small>
+        <small><strong>Δ%:</strong> Percent change (ARIMA vs Reference Close)</small>
+      </div>
       <div style="overflow:auto; max-height:75vh;">
         <table>
           <thead>
             <tr>
-              <th>Date</th>
+              <th>Target Date</th>
               <th>Ticker</th>
-              <th>Prediction</th>
+              <th>Prediction (Tomorrow)</th>
               <th class="right">Confidence</th>
-              <th class="right">Ref Price</th>
-              <th class="right">ARIMA Pred</th>
+              <th class="right">Reference Close</th>
+              <th class="right">ARIMA Pred (Tomorrow Close)</th>
               <th class="right">Δ% (ARIMA vs Ref)</th>
               <th class="right">Live Price</th>
             </tr>
@@ -44,24 +51,13 @@ tr:hover td { background:#0e1525; }
             
 <tr>
   <td><span class="muted">2025-09-23</span></td>
-  <td class="ticker">INTC</td>
-  <td><span class="pill up">UP</span></td>
-  <td class="right">50.8%</td>
-  <td class="right">28.76</td>
-  <td class="right">28.765</td>
-  <td class="right">0.02%</td>
-  <td class="right">29.340</td>
-</tr>
-
-<tr>
-  <td><span class="muted">2025-09-23</span></td>
   <td class="ticker">AAPL</td>
   <td><span class="pill down">DOWN</span></td>
   <td class="right">49.2%</td>
-  <td class="right">256.08</td>
-  <td class="right">256.472</td>
-  <td class="right">0.15%</td>
-  <td class="right">254.430</td>
+  <td class="right" title="Today Close (yfinance Close/Adj Close)">256.08</td>
+  <td class="right" title="Tomorrow Close (ARIMA)">256.472</td>
+  <td class="right" title="Percent change (ARIMA vs Reference Close)">0.15%</td>
+  <td class="right">252.310</td>
 </tr>
           </tbody>
         </table>

@@ -15,11 +15,23 @@ if str(PROJECT_ROOT) not in sys.path:
 # project imports
 from modeling.ml_direction_classifier import predict_for_tickers as _predict
 
-# paths / constants
+# ── Settings / constants ───────────────────────────────────────────────────────
 ROOT   = PROJECT_ROOT
 PUBLIC = ROOT / "public"
-DEFAULT_TICKERS = ["AAPL", "MSFT", "INTC", "BTC-USD"]
+
+# You can still override with env: TICKERS="AAPL,MSFT,TSLA,GOOGL,BTC-USD"
+DEFAULT_TICKERS = [
+    "AAPL", "MSFT", "INTC", "TSLA", "AMZN",
+    "GOOGL", "NVDA", "META", "BTC-USD", "ETH-USD"
+]
+
 AS_OF = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
+
+# Explicit “meaning” labels that will also be embedded per-row in JSON
+PREDICTION_TARGET        = "Tomorrow Close (next trading session)"
+REFERENCE_PRICE_BASIS    = "Today Close (yfinance Close/Adj Close)"
+ARIMA_FORECAST_BASIS     = "Tomorrow Close (ARIMA)"
+ARIMA_DELTA_DEFINITION   = "Percent change (ARIMA vs Reference Close)"
 
 
 def _normalize_row(row: Dict[str, Any]) -> Dict[str, Any]:
@@ -38,6 +50,12 @@ def _normalize_row(row: Dict[str, Any]) -> Dict[str, Any]:
     try: out["price"] = float(price)
     except Exception: out["price"] = None
     out["as_of"] = row.get("as_of") or AS_OF
+
+    # Attach explicit semantics for clarity (will be kept in JSON too)
+    out["prediction_target"]       = PREDICTION_TARGET
+    out["reference_price_basis"]   = REFERENCE_PRICE_BASIS
+    out["arima_forecast_basis"]    = ARIMA_FORECAST_BASIS
+    out["arima_delta_definition"]  = ARIMA_DELTA_DEFINITION
     return out
 
 
@@ -153,31 +171,59 @@ def write_outputs(rows: List[Dict[str, Any]]) -> None:
     as_of_values = [r.get("as_of") for r in norm if r.get("as_of")]
     as_of = max(as_of_values) if as_of_values else AS_OF
 
-    # round for CSV readability (keep raw in JSON if you prefer—here we keep same)
+    # round for CSV readability (keep raw in JSON as-is)
     for r in norm:
         if r.get("arima_pred") is not None: r["arima_pred"] = round(float(r["arima_pred"]), 3)
         if r.get("arima_delta_pct") is not None: r["arima_delta_pct"] = round(float(r["arima_delta_pct"]), 3)
         if r.get("live_price") is not None: r["live_price"] = round(float(r["live_price"]), 3)
 
-    # CSV
+    # ── CSV with clearer column names ───────────────────────────────────────────
     csv_path = PUBLIC / "predictions.csv"
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
-        fieldnames = ["as_of","date","ticker","prediction","probability","price","arima_pred","arima_delta_pct","live_price"]
+        fieldnames = [
+            "Generated_At",
+            "Target_Date",
+            "Ticker",
+            "Prediction_Direction_Tomorrow",
+            "Confidence_Score",
+            "Reference_Price_Close",
+            "ARIMA_Predicted_Price_TomorrowClose",
+            "ARIMA_Change_Pct",
+            "Live_Price",
+            "Prediction_Target",
+            "Reference_Price_Basis",
+            "ARIMA_Forecast_Basis"
+        ]
         w = csv.DictWriter(f, fieldnames=fieldnames); w.writeheader()
-        for r in norm: w.writerow({
-            "as_of": r.get("as_of", as_of),
-            "date": r.get("date", ""),
-            "ticker": r.get("ticker", ""),
-            "prediction": r.get("prediction", ""),
-            "probability": r.get("probability"),
-            "price": r.get("price"),
-            "arima_pred": r.get("arima_pred"),
-            "arima_delta_pct": r.get("arima_delta_pct"),
-            "live_price": r.get("live_price"),
-        })
+        for r in norm:
+            w.writerow({
+                "Generated_At": AS_OF,
+                "Target_Date": r.get("date", ""),
+                "Ticker": r.get("ticker", ""),
+                "Prediction_Direction_Tomorrow": r.get("prediction", ""),
+                "Confidence_Score": r.get("probability"),
+                "Reference_Price_Close": r.get("price"),
+                "ARIMA_Predicted_Price_TomorrowClose": r.get("arima_pred"),
+                "ARIMA_Change_Pct": r.get("arima_delta_pct"),
+                "Live_Price": r.get("live_price"),
+                "Prediction_Target": r.get("prediction_target", PREDICTION_TARGET),
+                "Reference_Price_Basis": r.get("reference_price_basis", REFERENCE_PRICE_BASIS),
+                "ARIMA_Forecast_Basis": r.get("arima_forecast_basis", ARIMA_FORECAST_BASIS),
+            })
 
-    # JSON
-    data = {"generated_at": AS_OF, "as_of": as_of, "count": len(norm), "predictions": norm}
+    # JSON: keep previous keys for compatibility + include the explicit labels
+    data = {
+        "generated_at": AS_OF,
+        "as_of": as_of,
+        "count": len(norm),
+        "predictions": norm,  # each row contains prediction_target/reference_basis/etc.
+        "schema": {
+            "prediction_target": PREDICTION_TARGET,
+            "reference_price_basis": REFERENCE_PRICE_BASIS,
+            "arima_forecast_basis": ARIMA_FORECAST_BASIS,
+            "arima_delta_definition": ARIMA_DELTA_DEFINITION
+        }
+    }
     (PUBLIC / "data.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # HTML render
@@ -204,9 +250,9 @@ def write_outputs(rows: List[Dict[str, Any]]) -> None:
   <td class="ticker">{r.get('ticker','')}</td>
   <td><span class="{pill}">{pred}</span></td>
   <td class="right">{fmt_prob(r.get('probability'))}</td>
-  <td class="right">{fmt_num(r.get('price'), 2)}</td>
-  <td class="right">{fmt_num(r.get('arima_pred'), 3)}</td>
-  <td class="right">{delta_txt}</td>
+  <td class="right" title="{REFERENCE_PRICE_BASIS}">{fmt_num(r.get('price'), 2)}</td>
+  <td class="right" title="{ARIMA_FORECAST_BASIS}">{fmt_num(r.get('arima_pred'), 3)}</td>
+  <td class="right" title="{ARIMA_DELTA_DEFINITION}">{delta_txt}</td>
   <td class="right">{fmt_num(r.get('live_price'), 3)}</td>
 </tr>""")
     rows_html = "\n".join(rows_html)
@@ -232,23 +278,30 @@ tr:hover td {{ background:#0e1525; }}
 .muted {{ color:var(--muted); }}
 .right {{ text-align:right; }}
 .ticker {{ font-weight:700; letter-spacing:.3px; }}
-.footer {{ color:var(--muted); font-size:12px; margin-top:12px; }}
+.footer {{ color:var(--muted); font-size:12px; margin-top:12px; line-height:1.4; }}
+.legend small {{ display:block; color:#9aa6b2; }}
 </style></head>
 <body>
   <div class="wrap">
     <div class="card">
       <h1>QuantCast — Predictions</h1>
       <div class="meta">Generated: <strong>{AS_OF}</strong> | Model as-of: <strong>{as_of}</strong> | Rows: <strong>{len(norm)}</strong></div>
+      <div class="legend" style="margin:8px 0 16px;">
+        <small><strong>Prediction Target:</strong> {PREDICTION_TARGET}</small>
+        <small><strong>Reference Price:</strong> {REFERENCE_PRICE_BASIS}</small>
+        <small><strong>ARIMA Forecast:</strong> {ARIMA_FORECAST_BASIS}</small>
+        <small><strong>Δ%:</strong> {ARIMA_DELTA_DEFINITION}</small>
+      </div>
       <div style="overflow:auto; max-height:75vh;">
         <table>
           <thead>
             <tr>
-              <th>Date</th>
+              <th>Target Date</th>
               <th>Ticker</th>
-              <th>Prediction</th>
+              <th>Prediction (Tomorrow)</th>
               <th class="right">Confidence</th>
-              <th class="right">Ref Price</th>
-              <th class="right">ARIMA Pred</th>
+              <th class="right">Reference Close</th>
+              <th class="right">ARIMA Pred (Tomorrow Close)</th>
               <th class="right">Δ% (ARIMA vs Ref)</th>
               <th class="right">Live Price</th>
             </tr>

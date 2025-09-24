@@ -20,10 +20,7 @@ ROOT   = PROJECT_ROOT
 PUBLIC = ROOT / "public"
 
 # You can still override with env: TICKERS="AAPL,MSFT,TSLA,GOOGL,BTC-USD"
-DEFAULT_TICKERS = [
-    "AAPL", "MSFT", "INTC", "TSLA", "AMZN",
-    "GOOGL", "NVDA", "META", "BTC-USD", "ETH-USD"
-]
+DEFAULT_TICKERS = ["AAPL", "INTC", "MSFT", "GOOGL", "TSLA", "AMZN", "NVDA", "META", "BTC-USD", "ETH-USD"]
 
 AS_OF = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 

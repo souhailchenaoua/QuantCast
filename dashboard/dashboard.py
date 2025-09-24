@@ -273,6 +273,7 @@ def main():
     tickers = [t.strip().upper() for t in tickers_env.split(",") if t.strip()]
     rows = run_inference(tickers)
     arima_map = load_arima_map()
+    print("[dashboard] ARIMA tickers loaded:", len(arima_map), arima_map.keys())
 
     for r in rows:
         tkr = r.get("ticker")

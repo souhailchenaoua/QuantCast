@@ -23,36 +23,35 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Cache pip
-        uses: actions/cache@v4
-        with:
-          path: ~/.cache/pip
-          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-          restore-keys: ${{ runner.os }}-pip-
-
       - name: Install deps
         run: |
           python -m pip install -U pip
           pip install -r requirements.txt
 
-      # ---- Build data artifacts ----
+      # === generate inputs ===
       - name: Make features
         run: python modeling/make_features.py
 
       - name: Run ARIMA
         run: python modeling/time_series_arima.py
 
-      # ---- Build static site (no live hits in CI) ----
-      - name: Build dashboard
+      # === sanity check ARIMA file ===
+      - name: Show ARIMA head
+        run: |
+          test -f data/processed/arima_results_public.csv
+          head -n 5 data/processed/arima_results_public.csv || true
+
+      # === build dashboard (no live price hits on CI) ===
+      - name: Build static dashboard
         env:
           PRICES_FEATURES_PATH: data/processed/prices_features_public.csv
           ARIMA_PUBLIC_PATH:    data/processed/arima_results_public.csv
           FETCH_LIVE: "0"
         run: |
-          ls -l data/processed || true
           python -m dashboard.dashboard
+          grep -E "ARIMA Pred|Δ%" -n public/index.html || true
 
-      - name: Upload Pages artifact
+      - name: Upload artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: public

@@ -1,7 +1,7 @@
 Generated_At,Target_Date,Ticker,Prediction_Direction_Tomorrow,Confidence_Score,Reference_Price_Close,ARIMA_Predicted_Price_TomorrowClose,ARIMA_Change_Pct,Live_Price,Prediction_Target,Reference_Price_Basis,ARIMA_Forecast_Basis
-2025-09-24T21:28:49Z,2025-09-24,TSLA,UP,0.546993405385035,425.8500061035156,,,442.79,Tomorrow Close (next trading session),Today Close (yfinance Close/Adj Close),Tomorrow Close (ARIMA)
-2025-09-24T21:28:49Z,2025-09-24,NVDA,DOWN,0.5932884894250698,178.42999267578125,,,176.97,Tomorrow Close (next trading session),Today Close (yfinance Close/Adj Close),Tomorrow Close (ARIMA)
-2025-09-24T21:28:49Z,2025-09-24,GOOGL,DOWN,0.5317576528732522,251.66000366210932,,,247.14,Tomorrow Close (next trading session),Today Close (yfinance Close/Adj Close),Tomorrow Close (ARIMA)
-2025-09-24T21:28:49Z,2025-09-24,BTC-USD,DOWN,0.37130701084227447,112014.5,,,113616.25,Tomorrow Close (next trading session),Today Close (yfinance Close/Adj Close),Tomorrow Close (ARIMA)
-2025-09-24T21:28:49Z,2025-09-24,AMZN,DOWN,0.3692239312171537,220.7100067138672,,,220.21,Tomorrow Close (next trading session),Today Close (yfinance Close/Adj Close),Tomorrow Close (ARIMA)
-2025-09-24T21:28:49Z,2025-09-24,AAPL,UP,0.655449502412225,254.42999267578125,,,252.31,Tomorrow Close (next trading session),Today Close (yfinance Close/Adj Close),Tomorrow Close (ARIMA)
+2025-09-24T21:35:03Z,2025-09-24,TSLA,UP,0.5469915221257396,425.8500061035156,,,442.79,Tomorrow Close (next trading session),Today Close (yfinance Close/Adj Close),Tomorrow Close (ARIMA)
+2025-09-24T21:35:03Z,2025-09-24,NVDA,DOWN,0.5932884871705167,178.42999267578125,,,176.97,Tomorrow Close (next trading session),Today Close (yfinance Close/Adj Close),Tomorrow Close (ARIMA)
+2025-09-24T21:35:03Z,2025-09-24,GOOGL,DOWN,0.5317547278190157,251.66000366210932,,,247.14,Tomorrow Close (next trading session),Today Close (yfinance Close/Adj Close),Tomorrow Close (ARIMA)
+2025-09-24T21:35:03Z,2025-09-24,BTC-USD,DOWN,0.37130310499077906,112014.5,,,113595.188,Tomorrow Close (next trading session),Today Close (yfinance Close/Adj Close),Tomorrow Close (ARIMA)
+2025-09-24T21:35:03Z,2025-09-24,AMZN,DOWN,0.3692226950504933,220.7100067138672,,,220.21,Tomorrow Close (next trading session),Today Close (yfinance Close/Adj Close),Tomorrow Close (ARIMA)
+2025-09-24T21:35:03Z,2025-09-24,AAPL,UP,0.6554596859876832,254.42999267578125,,,252.31,Tomorrow Close (next trading session),Today Close (yfinance Close/Adj Close),Tomorrow Close (ARIMA)

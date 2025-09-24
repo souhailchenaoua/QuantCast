@@ -1,6 +1,6 @@
 {
-  "generated_at": "2025-09-24T11:14:50Z",
-  "as_of": "2025-09-24T11:14:51Z",
+  "generated_at": "2025-09-24T11:39:45Z",
+  "as_of": "2025-09-24T11:39:45Z",
   "count": 2,
   "predictions": [
     {
@@ -9,7 +9,7 @@
       "prediction": "UP",
       "probability": 0.5083526448625387,
       "price": 28.76000022888184,
-      "as_of": "2025-09-24T11:14:51Z",
+      "as_of": "2025-09-24T11:39:45Z",
       "arima_pred": 28.765,
       "arima_delta_pct": 0.016,
       "live_price": 29.34
@@ -18,9 +18,9 @@
       "ticker": "AAPL",
       "date": "2025-09-23",
       "prediction": "DOWN",
-      "probability": 0.4924225523358881,
+      "probability": 0.49242416008236084,
       "price": 256.0799865722656,
-      "as_of": "2025-09-24T11:14:51Z",
+      "as_of": "2025-09-24T11:39:45Z",
       "arima_pred": 256.472,
       "arima_delta_pct": 0.153,
       "live_price": 254.43

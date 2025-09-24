@@ -1,23 +1,29 @@
 {
-  "generated_at": "2025-09-24T10:16:52Z",
-  "as_of": "2025-09-24T10:16:52Z",
+  "generated_at": "2025-09-24T10:49:45Z",
+  "as_of": "2025-09-24T10:49:45Z",
   "count": 2,
   "predictions": [
     {
       "ticker": "INTC",
       "date": "2025-09-23",
       "prediction": "UP",
-      "probability": 0.5083526448625388,
+      "probability": 0.508352644862539,
       "price": 28.76000022888184,
-      "as_of": "2025-09-24T10:16:52Z"
+      "as_of": "2025-09-24T10:49:45Z",
+      "arima_pred": 28.764513061153703,
+      "arima_delta_pct": 0.015691349916374452,
+      "live_price": 29.34000015258789
     },
     {
       "ticker": "AAPL",
       "date": "2025-09-23",
       "prediction": "DOWN",
-      "probability": 0.49241854023430287,
+      "probability": 0.49241191836833187,
       "price": 256.0799865722656,
-      "as_of": "2025-09-24T10:16:52Z"
+      "as_of": "2025-09-24T10:49:45Z",
+      "arima_pred": 256.47161539758696,
+      "arima_delta_pct": 0.15293222659195055,
+      "live_price": 254.42999267578125
     }
   ]
 }

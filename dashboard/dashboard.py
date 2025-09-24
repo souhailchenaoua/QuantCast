@@ -7,7 +7,7 @@ from typing import List, Dict, Any, Optional
 # deps
 import pandas as pd
 
-# make project root importable
+# project root on path
 PROJECT_ROOT = pathlib.Path(__file__).resolve().parents[1]
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.append(str(PROJECT_ROOT))
@@ -27,22 +27,16 @@ def _normalize_row(row: Dict[str, Any]) -> Dict[str, Any]:
     out["ticker"] = str(row.get("ticker") or row.get("symbol") or "").upper()
     out["date"] = str(row.get("date") or row.get("target_date") or row.get("prediction_date") or "")
     pred = (row.get("prediction") or row.get("signal") or row.get("label") or "")
-    if not pred and isinstance(row.get("pred"), str):
-        pred = row["pred"]
+    if not pred and isinstance(row.get("pred"), str): pred = row["pred"]
     out["prediction"] = str(pred).upper() if pred else ""
     p = row.get("probability", row.get("confidence", row.get("prob")))
-    try:
-        out["probability"] = float(p)
+    try: out["probability"] = float(p)
     except Exception:
-        try:
-            out["probability"] = float(str(p).rstrip("%")) / 100.0
-        except Exception:
-            out["probability"] = None
+        try: out["probability"] = float(str(p).rstrip("%")) / 100.0
+        except Exception: out["probability"] = None
     price = row.get("price") or row.get("close") or row.get("ref_price") or row.get("AdjClose")
-    try:
-        out["price"] = float(price)
-    except Exception:
-        out["price"] = None
+    try: out["price"] = float(price)
+    except Exception: out["price"] = None
     out["as_of"] = row.get("as_of") or AS_OF
     return out
 
@@ -50,8 +44,7 @@ def _normalize_row(row: Dict[str, Any]) -> Dict[str, Any]:
 def run_inference(tickers: List[str]) -> List[Dict[str, Any]]:
     try:
         rows = _predict(tickers)
-        if hasattr(rows, "to_dict"):
-            rows = rows.to_dict(orient="records")
+        if hasattr(rows, "to_dict"): rows = rows.to_dict(orient="records")
         return [_normalize_row(r) for r in rows]
     except Exception as e:
         print("[dashboard] predict_for_tickers failed:", e)
@@ -60,17 +53,17 @@ def run_inference(tickers: List[str]) -> List[Dict[str, Any]]:
 
 
 def load_arima_map() -> Dict[str, float]:
-    """Return {TICKER: predicted_close} using ARIMA_PUBLIC_PATH or arima_grid_*.csv fallbacks."""
+    """Return {TICKER: predicted_close} from ARIMA_PUBLIC_PATH or arima_grid_*.csv."""
     path = os.getenv("ARIMA_PUBLIC_PATH") or str(ROOT / "data" / "processed" / "arima_results_public.csv")
 
-    # single csv path
+    # single csv
     if os.path.exists(path):
         try:
             df = pd.read_csv(path)
             df.columns = [c.strip().lower() for c in df.columns]
             if "forecastdate" not in df.columns and "date" in df.columns:
                 df.rename(columns={"date": "forecastdate"}, inplace=True)
-            for src in ("predictedclose", "predclose", "yhat", "forecast", "prediction", "pred", "arima_pred", "price_pred", "forecast_price"):
+            for src in ("predictedclose","predclose","yhat","forecast","prediction","pred","arima_pred","price_pred","forecast_price"):
                 if src in df.columns:
                     df.rename(columns={src: "predictedclose"}, inplace=True)
                     break
@@ -91,27 +84,16 @@ def load_arima_map() -> Dict[str, float]:
             try:
                 df = pd.read_csv(fp)
                 df.columns = [c.strip().lower() for c in df.columns]
-                date_col = None
-                for k in ("forecastdate", "date", "ds"):
-                    if k in df.columns:
-                        date_col = k
-                        break
-                pred_col = None
-                for k in ("predictedclose", "predclose", "yhat", "forecast", "prediction", "pred"):
-                    if k in df.columns:
-                        pred_col = k
-                        break
+                date_col = next((k for k in ("forecastdate","date","ds") if k in df.columns), None)
+                pred_col = next((k for k in ("predictedclose","predclose","yhat","forecast","prediction","pred") if k in df.columns), None)
                 if not pred_col:
                     for c in df.columns:
                         if ("pred" in c or "fore" in c) and ("close" in c or "yhat" in c or "price" in c):
-                            pred_col = c
-                            break
-                if not date_col or not pred_col:
-                    continue
+                            pred_col = c; break
+                if not date_col or not pred_col: continue
                 df[date_col] = pd.to_datetime(df[date_col], errors="coerce")
                 df = df.dropna(subset=[date_col, pred_col]).sort_values(date_col)
-                if df.empty:
-                    continue
+                if df.empty: continue
                 tkr = pathlib.Path(fp).stem.replace("arima_grid_", "").upper()
                 out[tkr] = float(df[pred_col].iloc[-1])
             except Exception as e:
@@ -122,6 +104,8 @@ def load_arima_map() -> Dict[str, float]:
 
 
 def fetch_live_price(ticker: str, fallback: Optional[float] = None) -> Optional[float]:
+    if os.getenv("FETCH_LIVE","1") == "0":
+        return fallback
     try:
         import yfinance as yf
         info = yf.Ticker(ticker)
@@ -132,8 +116,7 @@ def fetch_live_price(ticker: str, fallback: Optional[float] = None) -> Optional[
             h = info.history(period="1d")
             if hasattr(h, "empty") and not h.empty and "Close" in h.columns:
                 px = float(h["Close"].iloc[-1])
-        if px is None or (isinstance(px, float) and math.isnan(px)):
-            return fallback
+        if px is None or (isinstance(px, float) and math.isnan(px)): return fallback
         return float(px)
     except Exception as e:
         print(f"[dashboard] yfinance failed for {ticker}: {e}")
@@ -145,89 +128,76 @@ def write_outputs(rows: List[Dict[str, Any]]) -> None:
 
     def safe_date(s: str) -> datetime.datetime:
         for fmt in ("%Y-%m-%d",):
-            try:
-                return datetime.datetime.strptime(s, fmt)
-            except Exception:
-                pass
-        try:
-            return datetime.datetime.fromisoformat(s)
-        except Exception:
-            return datetime.datetime.min
+            try: return datetime.datetime.strptime(s, fmt)
+            except Exception: pass
+        try: return datetime.datetime.fromisoformat(s)
+        except Exception: return datetime.datetime.min
 
-    # keep ARIMA + live fields when normalizing
+    # normalize + keep ARIMA/live fields, coercing to floats
+    def _coerce(x):
+        if x is None: return None
+        s = str(x).strip()
+        if s == "" or s.lower() == "nan": return None
+        try: return float(s)
+        except Exception: return None
+
     norm: List[Dict[str, Any]] = []
     for r in rows:
         base = _normalize_row(r)
-        for k in ("arima_pred", "arima_delta_pct", "live_price"):
-            if k in r:
-                base[k] = r[k]
+        base["arima_pred"]      = _coerce(r.get("arima_pred"))
+        base["arima_delta_pct"] = _coerce(r.get("arima_delta_pct"))
+        base["live_price"]      = _coerce(r.get("live_price"))
         norm.append(base)
 
-    norm.sort(key=lambda r: (safe_date(r.get("date", "")), r.get("ticker", "")), reverse=True)
-
+    norm.sort(key=lambda r: (safe_date(r.get("date","")), r.get("ticker","")), reverse=True)
     as_of_values = [r.get("as_of") for r in norm if r.get("as_of")]
     as_of = max(as_of_values) if as_of_values else AS_OF
+
+    # round for CSV readability (keep raw in JSON if you prefer—here we keep same)
+    for r in norm:
+        if r.get("arima_pred") is not None: r["arima_pred"] = round(float(r["arima_pred"]), 3)
+        if r.get("arima_delta_pct") is not None: r["arima_delta_pct"] = round(float(r["arima_delta_pct"]), 3)
+        if r.get("live_price") is not None: r["live_price"] = round(float(r["live_price"]), 3)
 
     # CSV
     csv_path = PUBLIC / "predictions.csv"
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
-        fieldnames = [
-            "as_of", "date", "ticker", "prediction", "probability", "price",
-            "arima_pred", "arima_delta_pct", "live_price"
-        ]
-        w = csv.DictWriter(f, fieldnames=fieldnames)
-        w.writeheader()
-        for r in norm:
-            w.writerow({
-                "as_of": r.get("as_of", as_of),
-                "date": r.get("date", ""),
-                "ticker": r.get("ticker", ""),
-                "prediction": r.get("prediction", ""),
-                "probability": r.get("probability"),
-                "price": r.get("price"),
-                "arima_pred": r.get("arima_pred"),
-                "arima_delta_pct": r.get("arima_delta_pct"),
-                "live_price": r.get("live_price"),
-            })
+        fieldnames = ["as_of","date","ticker","prediction","probability","price","arima_pred","arima_delta_pct","live_price"]
+        w = csv.DictWriter(f, fieldnames=fieldnames); w.writeheader()
+        for r in norm: w.writerow({
+            "as_of": r.get("as_of", as_of),
+            "date": r.get("date", ""),
+            "ticker": r.get("ticker", ""),
+            "prediction": r.get("prediction", ""),
+            "probability": r.get("probability"),
+            "price": r.get("price"),
+            "arima_pred": r.get("arima_pred"),
+            "arima_delta_pct": r.get("arima_delta_pct"),
+            "live_price": r.get("live_price"),
+        })
 
     # JSON
-    data = {
-        "generated_at": AS_OF,
-        "as_of": as_of,
-        "count": len(norm),
-        "predictions": norm,
-    }
+    data = {"generated_at": AS_OF, "as_of": as_of, "count": len(norm), "predictions": norm}
     (PUBLIC / "data.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
-    # HTML helpers
+    # HTML render
     def fmt_prob(p):
-        try:
-            return f"{float(p) * 100:.1f}%"
-        except Exception:
-            return "" if p is None else str(p)
+        try: return f"{float(p)*100:.1f}%"
+        except Exception: return "" if p is None else str(p)
 
     def fmt_num(x, nd=2):
         try:
-            return f"{float(x):.{nd}f}"
+            v = float(x)
+            if math.isnan(v): return ""
+            return f"{v:.{nd}f}"
         except Exception:
             return ""
 
-    delta_html = ""
-    if r.get("arima_delta_pct") is not None:
-        s = float(r["arima_delta_pct"])
-        arrow = "↑" if s >= 0 else "↓"
-        cls = "up" if s >= 0 else "down"
-        delta_html = f'<span class="{cls}">{arrow} {abs(s):.2f}%</span>'
-    
     rows_html: List[str] = []
     for r in norm:
         pred = (r.get("prediction") or "").upper()
-        pill = "pill"
-        if pred in ("UP", "BUY"):
-            pill = "pill up"
-        elif pred in ("DOWN", "SELL"):
-            pill = "pill down"
-
+        pill = "pill" if pred not in ("UP","BUY","DOWN","SELL") else ("pill up" if pred in ("UP","BUY") else "pill down")
+        delta_txt = "" if r.get("arima_delta_pct") is None else f"{fmt_num(r['arima_delta_pct'], 2)}%"
         rows_html.append(f"""
 <tr>
   <td><span class="muted">{r.get('date','')}</span></td>
@@ -236,7 +206,7 @@ def write_outputs(rows: List[Dict[str, Any]]) -> None:
   <td class="right">{fmt_prob(r.get('probability'))}</td>
   <td class="right">{fmt_num(r.get('price'), 2)}</td>
   <td class="right">{fmt_num(r.get('arima_pred'), 3)}</td>
-  <td class="right">{delta_html}</td>
+  <td class="right">{delta_txt}</td>
   <td class="right">{fmt_num(r.get('live_price'), 3)}</td>
 </tr>""")
     rows_html = "\n".join(rows_html)
@@ -311,10 +281,8 @@ def main():
         r["arima_pred"] = apred
         r["arima_delta_pct"] = None
         if apred is not None and ref_price not in (None, 0):
-            try:
-                r["arima_delta_pct"] = 100.0 * (float(apred) - float(ref_price)) / float(ref_price)
-            except Exception:
-                pass
+            try: r["arima_delta_pct"] = 100.0 * (float(apred) - float(ref_price)) / float(ref_price)
+            except Exception: pass
         lp = fetch_live_price(tkr, fallback=ref_price)
         r["live_price"] = lp if lp is not None else ref_price
 

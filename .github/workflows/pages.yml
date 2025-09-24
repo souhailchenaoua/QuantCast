@@ -1,50 +1,29 @@
-name: Deploy dashboard to Pages
+name: Deploy static site (public/) to GitHub Pages
 on:
-  push: { branches: [ main ] }
+  push:
+    branches: [ main ]
+    paths:
+      - 'public/**'
+      - '.github/workflows/pages.yml'
   workflow_dispatch:
-
-permissions: { contents: read, pages: write, id-token: write }
-concurrency: { group: "pages", cancel-in-progress: true }
-
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
 jobs:
-  build:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
-
-      - name: Install deps
-        run: |
-          python -m pip install -U pip
-          pip install -r requirements.txt
-
-      - name: Sanity check CSVs exist in repo
-        run: |
-          ls -la data/processed
-          head -n 3 data/processed/arima_results_public.csv || true
-          head -n 3 data/processed/prices_features_public.csv || true
-
-      - name: Build dashboard (use committed CSVs)
-        env:
-          PRICES_FEATURES_PATH: data/processed/prices_features_public.csv
-          ARIMA_PUBLIC_PATH:    data/processed/arima_results_public.csv
-          FETCH_LIVE: "0"
-          REQUIRE_ARIMA: "1"
-        run: |
-          python -m dashboard.dashboard
-          head -n 5 public/predictions.csv
-          grep -n "ARIMA Pred" -n public/index.html || true
-
-      - uses: actions/upload-pages-artifact@v3
-        with: { path: public }
-
   deploy:
-    needs: build
-    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
     steps:
+      - uses: actions/checkout@v4
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
       - id: deployment
         uses: actions/deploy-pages@v4

@@ -37,7 +37,7 @@ jobs:
 
       # ---- 1) Build data artifacts ----
       - name: Make features
-        run: python modeling/make_features.py
+        run: python etl/feature_engineering.py
 
       - name: Run ARIMA
         run: python modeling/time_series_arima.py

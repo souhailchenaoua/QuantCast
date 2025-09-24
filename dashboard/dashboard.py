@@ -212,6 +212,13 @@ def write_outputs(rows: List[Dict[str, Any]]) -> None:
         except Exception:
             return ""
 
+    delta_html = ""
+    if r.get("arima_delta_pct") is not None:
+        s = float(r["arima_delta_pct"])
+        arrow = "↑" if s >= 0 else "↓"
+        cls = "up" if s >= 0 else "down"
+        delta_html = f'<span class="{cls}">{arrow} {abs(s):.2f}%</span>'
+    
     rows_html: List[str] = []
     for r in norm:
         pred = (r.get("prediction") or "").upper()
@@ -229,7 +236,7 @@ def write_outputs(rows: List[Dict[str, Any]]) -> None:
   <td class="right">{fmt_prob(r.get('probability'))}</td>
   <td class="right">{fmt_num(r.get('price'), 2)}</td>
   <td class="right">{fmt_num(r.get('arima_pred'), 3)}</td>
-  <td class="right">{("" if r.get('arima_delta_pct') is None else f"{float(r['arima_delta_pct']):.2f}%")}</td>
+  <td class="right">{delta_html}</td>
   <td class="right">{fmt_num(r.get('live_price'), 3)}</td>
 </tr>""")
     rows_html = "\n".join(rows_html)

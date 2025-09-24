@@ -3,10 +3,12 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+
 permissions:
   contents: read
   pages: write
   id-token: write
+
 concurrency:
   group: "pages"
   cancel-in-progress: true
@@ -16,22 +18,45 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
-        with: { python-version: '3.11' }
+        with:
+          python-version: '3.11'
+
+      - name: Cache pip
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/pip
+          key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
+          restore-keys: ${{ runner.os }}-pip-
+
       - name: Install deps
         run: |
           python -m pip install -U pip
           pip install -r requirements.txt
-      - name: Build static dashboard
+
+      # ---- Build data artifacts ----
+      - name: Make features
+        run: python modeling/make_features.py
+
+      - name: Run ARIMA
+        run: python modeling/time_series_arima.py
+
+      # ---- Build static site (no live hits in CI) ----
+      - name: Build dashboard
         env:
           PRICES_FEATURES_PATH: data/processed/prices_features_public.csv
           ARIMA_PUBLIC_PATH:    data/processed/arima_results_public.csv
-          FETCH_LIVE: "0"   # deterministic builds
-        run: python -m dashboard.dashboard
-      - name: Upload artifact
+          FETCH_LIVE: "0"
+        run: |
+          ls -l data/processed || true
+          python -m dashboard.dashboard
+
+      - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
           path: public
+
   deploy:
     needs: build
     runs-on: ubuntu-latest

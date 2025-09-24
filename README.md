@@ -1,145 +1,121 @@
-# 📈 QuantCast – Stock Price Forecasting with Hybrid Models (AWS + ML)
+# 📈 QuantCast — Stock Price Forecasting Dashboard
 
-## 📌 Project Overview
-**QuantCast** is an end-to-end pipeline that predicts **next-day returns** and **volatility** for a small watchlist of assets (e.g., AAPL, MSFT, BTC-USD).  
-It combines **classical time-series models** (ARIMA/GARCH) with **deep learning (LSTM)** and is designed to be **AWS-native** for scalability.  
-
-The project demonstrates:
-- Data ingestion & feature engineering
-- Hybrid quant + ML modeling
-- Backtesting & performance evaluation
-- (Planned) AWS deployment with SageMaker, Lambda, and QuickSight
+QuantCast is a hybrid ML + time-series pipeline that predicts **next-day price direction** and **compares with ARIMA forecasts** for selected tickers (AAPL, INTC, etc.).  
+Outputs are published as a **static dashboard** using GitHub Pages.
 
 ---
 
-## 🛠️ Tech Stack
-- **Python** (Pandas, NumPy, Statsmodels, PyTorch, Scikit-learn)
-- **yfinance** – historical market data
-- **Matplotlib** – local visualizations
-- **AWS (Planned)**:
-  - S3 (data lake)
-  - Lambda + EventBridge (automation)
-  - SageMaker (training & deployment)
-  - DynamoDB (prediction storage)
-  - QuickSight (dashboarding)
+## 🚀 Project Structure
 
----
-
-## 📂 Project Structure
 ```
 QuantCast/
+│
+├── dashboard/                 # Dashboard renderer (CSV, JSON, HTML)
+│   └── dashboard.py
+│
+├── modeling/                  # ML + ARIMA models
+│   ├── ml_direction_classifier.py
+│   └── time_series_arima.py
+│
 ├── data/
-│   ├── raw/                  # raw market data from yfinance
-│   └── processed/            # engineered features (Parquet/CSV)
+│   └── processed/             # Processed datasets + ARIMA outputs
+│       ├── prices_features_public.csv
+│       └── arima_results_public.csv
 │
-├── etl/
-│   ├── data_collection.py    # fetch daily OHLCV data
-│   └── feature_engineering.py# build features (returns, RSI, MA, volatility)
+├── scripts/                   # (optional) one-off utility scripts
 │
-├── modeling/
-│   ├── model_training.py     # ARIMA + LSTM training & backtesting
-│   └── deploy_model.py       # package/export model artifacts
+├── public/                    # Generated artifacts (local runs)
+│   ├── predictions.csv
+│   ├── data.json
+│   └── index.html
 │
-├── serving/
-│   └── batch_infer.py        # daily inference (planned for AWS Lambda)
+├── docs/                      # Published folder for GitHub Pages
+│   └── index.html             # (copied from public/)
 │
-├── dashboard/
-│   └── dashboard.py          # prototype dashboard (local/Matplotlib → QuickSight later)
-│
-├── infra/
-│   └── README-aws-setup.md   # AWS setup notes (S3, SageMaker, Lambda)
-│
-├── requirements.txt          # dependencies
-└── README.md                 # this file
+├── requirements.txt
+└── README.md
 ```
 
 ---
 
-## ⚙️ How It Works
-1. **Data Collection**
-   - Pulls historical OHLCV data from `yfinance`.
-   - Saves files to `data/raw/`.
+## ⚙️ Setup
 
-2. **Feature Engineering**
-   - Creates technical indicators:
-     - Log returns
-     - Rolling mean/volatility
-     - RSI
-   - Saves to `data/processed/`.
+1. **Clone the repo**
+   ```bash
+   git clone https://github.com/<your-user>/QuantCast.git
+   cd QuantCast
+   ```
 
-3. **Model Training**
-   - Classical: ARIMA for returns, GARCH for volatility.
-   - Deep Learning: LSTM on feature windows.
-   - Backtests with walk-forward validation.
-   - Metrics: MAE, directional accuracy, Sharpe ratio.
+2. **Create venv + install deps**
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1   # Windows
+   pip install -r requirements.txt
+   ```
 
-4. **Serving (Planned)**
-   - Deploys best model to **AWS SageMaker Endpoint**.
-   - **Lambda** runs daily to fetch new data and store predictions.
-
-5. **Dashboard (Planned)**
-   - Local prototype in Matplotlib.
-   - AWS QuickSight for live trader dashboard.
+3. **Check dependencies**  
+   Make sure these libs are available: `pandas`, `numpy`, `scikit-learn`, `statsmodels`, `yfinance`.
 
 ---
 
-## 🚀 Getting Started
+## 🛠️ How to Run Locally
 
-### 1. Clone Repo
-```bash
-git clone https://github.com/yourusername/QuantCast.git
-cd QuantCast
-```
+1. **Generate features + ARIMA outputs**
+   ```powershell
+   python data/etl/feature_engineering.py
+   python modeling/time_series_arima.py
+   ```
 
-### 2. Install Dependencies
-```bash
-pip install -r requirements.txt
-```
+   This produces:
+   - `data/processed/prices_features_public.csv`
+   - `data/processed/arima_results_public.csv`
 
-### 3. Run Data Collection
-```bash
-python etl/data_collection.py
-```
+2. **Build the dashboard**
+   ```powershell
+   $env:PRICES_FEATURES_PATH = "data\processed\prices_features_public.csv"
+   $env:ARIMA_PUBLIC_PATH    = "data\processed\arima_results_public.csv"
+   python -m dashboard.dashboard
+   ```
 
-### 4. Run Feature Engineering
-```bash
-python etl/feature_engineering.py
-```
+   Outputs go into `public/`:
+   - `predictions.csv`
+   - `data.json`
+   - `index.html`
 
-### 5. Train Models
-```bash
-python modeling/model_training.py
-```
-
----
-
-## 📊 Example Output (local)
-- **Features CSV/Parquet** with returns, RSI, moving averages.  
-- **Plots**:
-  - Predicted vs actual returns.  
-  - Directional accuracy (up/down).  
-  - Strategy P&L curve.  
+3. **Preview locally**  
+   Open `public/index.html` in your browser.
 
 ---
 
-## 🧠 Learning Outcomes
-- Build **quant-style ML models** for financial time series.  
-- Apply **walk-forward backtesting** to avoid leakage.  
-- Practice **AWS ML pipeline design** (S3 → SageMaker → Lambda → QuickSight).  
-- Deploy ML models as **daily prediction services**.  
+## 🌐 Publishing to GitHub Pages
+
+We no longer use AWS S3/Fargate. Deployment is **GitHub Pages only**.
+
+1. Copy generated files to `/docs`:
+   ```powershell
+   mkdir docs 2>$null
+   Copy-Item public\* docs\ -Recurse -Force
+   ```
+
+2. Commit + push:
+   ```powershell
+   git add docs/*
+   git commit -m "update dashboard snapshot"
+   git push
+   ```
+
+3. Ensure GitHub Pages is set to **Branch = `main`, Folder = `/docs`** in repo settings.
+
+4. Open your site:  
+   ```
+   https://<your-user>.github.io/QuantCast/
+   ```
 
 ---
 
-## 🔮 Roadmap
-- [x] Local data collection & feature engineering  
-- [x] Baseline ARIMA + LSTM training  
-- [ ] Backtesting & performance evaluation  
-- [ ] AWS S3 integration  
-- [ ] SageMaker training/deployment  
-- [ ] Lambda daily batch predictions  
-- [ ] QuickSight dashboard  
+## 🔍 Notes
 
----
-
-## 📜 License
-MIT License – feel free to use and adapt.
+- `public/` = local build outputs (not served directly).  
+- `docs/` = published snapshot for Pages.  
+- `data/processed/` must contain the CSVs before building the dashboard.  
+- AWS/S3 references in older code are deprecated and no longer required.  

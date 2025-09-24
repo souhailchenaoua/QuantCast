@@ -1,8 +1,8 @@
-name: Deploy dashboard to Pages
+name: build-and-deploy
 on:
+  workflow_dispatch: {}
   push:
     branches: [ main ]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -19,49 +19,39 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Use 3.9 for widest sklearn compatibility
       - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+        with: { python-version: "3.9" }
 
-      - name: Install deps
+      - name: Install deps (pinned for CI)
         run: |
-          python -m pip install -U pip
-          pip install -r requirements.txt
+          python -m pip install --upgrade pip
+          pip install "numpy==1.26.4" "pandas==1.5.3" "scikit-learn==1.3.2" boto3 yfinance
+          # If you have extra libs in requirements.txt, install them without re-pinning core deps:
+          if [ -f requirements.txt ]; then pip install --no-deps -r requirements.txt; fi
 
-      # === generate inputs ===
-      - name: Make features
-        run: python modeling/make_features.py
-
-      - name: Run ARIMA
-        run: python modeling/time_series_arima.py
-
-      # === sanity check ARIMA file ===
-      - name: Show ARIMA head
-        run: |
-          test -f data/processed/arima_results_public.csv
-          head -n 5 data/processed/arima_results_public.csv || true
-
-      # === build dashboard (no live price hits on CI) ===
-      - name: Build static dashboard
+      - name: Build dashboard (writes ./public/index.html)
         env:
           PRICES_FEATURES_PATH: data/processed/prices_features_public.csv
           ARIMA_PUBLIC_PATH:    data/processed/arima_results_public.csv
-          FETCH_LIVE: "0"
+          
+          TICKERS: AAPL,MSFT,INTC,BTC-USD
         run: |
           python -m dashboard.dashboard
-          grep -E "ARIMA Pred|Δ%" -n public/index.html || true
+          test -f public/index.html
 
-      - name: Upload artifact
+      - name: Upload artifact for Pages
         uses: actions/upload-pages-artifact@v3
         with:
-          path: public
+          path: ./public
+
 
   deploy:
-    needs: build
-    runs-on: ubuntu-latest
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    needs: build
     steps:
       - id: deployment
         uses: actions/deploy-pages@v4

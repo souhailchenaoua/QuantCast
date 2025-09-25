@@ -4,7 +4,7 @@ import pandas as pd, os
 feat_src = r"data/processed/prices_features.csv"
 feat_dst = r"data/processed/prices_features_public.csv"
 df = pd.read_csv(feat_src, parse_dates=["Date"])
-keep = ["AAPL","MSFT","INTC","BTC-USD"]
+keep = ["AAPL", "INTC", "MSFT", "GOOGL", "TSLA", "AMZN", "NVDA", "META", "BTC-USD", "ETH-USD"] # edit as you like
 df = df[df["Ticker"].isin(keep)].sort_values(["Ticker","Date"]).groupby("Ticker").tail(1000)
 df.to_csv(feat_dst, index=False)
 print(" wrote", feat_dst, "rows:", len(df))

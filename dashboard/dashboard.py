@@ -20,7 +20,7 @@ from modeling.ml_direction_classifier import predict_for_tickers as _predict
 ROOT   = PROJECT_ROOT
 PUBLIC = ROOT / "public"
 
-# You can still override with env: TICKERS="AAPL,MSFT,TSLA,GOOGL,BTC-USD"
+# Override with env: TICKERS="AAPL,MSFT,TSLA,GOOGL,BTC-USD"
 DEFAULT_TICKERS = [
     "AAPL", "INTC", "MSFT", "GOOGL", "TSLA",
     "AMZN", "NVDA", "META", "BTC-USD", "ETH-USD"
@@ -29,7 +29,7 @@ DEFAULT_TICKERS = [
 # Single source of "generated at" truth (UTC ISO)
 GENERATED_AT = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
-# Explicit “meaning” labels that will also be embedded per-row in JSON
+# Explicit labels embedded in JSON rows
 PREDICTION_TARGET        = "Tomorrow Close (next trading session)"
 REFERENCE_PRICE_BASIS    = "Last completed session close (Adj Close for equities; Close for crypto)"
 ARIMA_FORECAST_BASIS     = "Tomorrow Close (ARIMA t+1)"
@@ -40,13 +40,13 @@ ARIMA_DELTA_DEFINITION   = "Percent change ((ARIMA - Reference Close) / Referenc
 
 def is_crypto_ticker(ticker: str) -> bool:
     t = (ticker or "").upper()
-    # Extend here if you add more crypto tickers
-    return t.endswith("-USD") and t in {"BTC-USD", "ETH-USD"}
+    # Extend if you add more crypto tickers
+    return t in {"BTC-USD", "ETH-USD"}
 
 def next_trading_weekday(d: datetime.date) -> datetime.date:
     """
     Return the next weekday (Mon–Fri). Simple weekend skip (no holiday calendar).
-    If d is Fri, Sat, Sun → Monday; else → d+1.
+    If d is Fri/Sat/Sun → Monday; else → d+1.
     """
     wd = d.weekday()  # Mon=0..Sun=6
     if wd >= 4:
@@ -56,16 +56,14 @@ def next_trading_weekday(d: datetime.date) -> datetime.date:
 def compute_dates_for_row(ticker: str) -> Tuple[str, str]:
     """
     Returns (as_of_local_date_str, target_date_str) both YYYY-MM-DD.
-    - as_of_local: Asia/Riyadh calendar date (human-friendly).
-    - target_date: crypto → UTC+1 day; equities → next trading weekday.
+    - as_of_local: Asia/Riyadh calendar date (human-friendly). Falls back to UTC if pytz missing.
+    - target_date: crypto → UTC + 1 day; equities → next trading weekday.
     """
-    # Local "as_of" for display
     try:
         import pytz
         tz_riyadh = pytz.timezone("Asia/Riyadh")
         as_of_local = datetime.datetime.now(tz_riyadh).date()
     except Exception:
-        # fallback to UTC date if pytz not available
         as_of_local = datetime.datetime.utcnow().date()
 
     today_utc = datetime.datetime.utcnow().date()
@@ -90,14 +88,10 @@ def _to_float_or_none(x: Any) -> Optional[float]:
 def _normalize_probability(p: Any) -> Optional[float]:
     """
     Normalize probability to 0..1 (float).
-    Accepts:
-      - 0..1 raw floats
-      - "57.9%" strings
-      - 0..100 numbers (assumed percent)
+    Accepts 0..1 floats, '57.9%' strings, or 0..100 numbers (assumed percent).
     """
     if p is None:
         return None
-    # strip % if any
     s = str(p).strip()
     if s.endswith("%"):
         s = s[:-1]
@@ -105,7 +99,6 @@ def _normalize_probability(p: Any) -> Optional[float]:
         val = float(s)
     except Exception:
         return None
-    # Heuristic: if > 1, assume it's percent
     if val > 1.0:
         return max(0.0, min(val / 100.0, 1.0))
     return max(0.0, min(val, 1.0))
@@ -115,7 +108,6 @@ def _fmt_prob_pct(p: Any) -> str:
         v = float(p)
         if v <= 1.0:  # assume 0..1
             return f"{v*100:.1f}%"
-        # already percent-ish
         return f"{v:.1f}%"
     except Exception:
         return ""
@@ -134,34 +126,27 @@ def _fmt_num(x: Any, nd: int = 2) -> str:
 
 def _normalize_row(row: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Normalize a model row into our canonical fields.
-    Also injects semantic labels so JSON consumers have self-describing rows.
+    Normalize a model row into canonical fields and inject semantic labels.
     """
     out: Dict[str, Any] = {}
 
-    # ticker & date (we will compute date if missing later)
     out["ticker"] = str(row.get("ticker") or row.get("symbol") or "").upper()
     out["date"] = str(row.get("date") or row.get("target_date") or row.get("prediction_date") or "")
 
-    # prediction direction
     pred = (row.get("prediction") or row.get("signal") or row.get("label") or "")
     if not pred and isinstance(row.get("pred"), str):
         pred = row["pred"]
     out["prediction"] = str(pred).upper() if pred else ""
 
-    # probability → 0..1
     out["probability"] = _normalize_probability(
         row.get("probability", row.get("confidence", row.get("prob")))
     )
 
-    # reference price (Adj Close equities / Close crypto) — passthrough for now
     price = row.get("price") or row.get("close") or row.get("ref_price") or row.get("AdjClose")
     out["price"] = _to_float_or_none(price)
 
-    # audit timestamps (row-level as_of if present; we also keep a job-level GENERATED_AT)
     out["as_of"] = row.get("as_of") or GENERATED_AT
 
-    # meaning labels
     out["prediction_target"]       = PREDICTION_TARGET
     out["reference_price_basis"]   = REFERENCE_PRICE_BASIS
     out["arima_forecast_basis"]    = ARIMA_FORECAST_BASIS
@@ -171,16 +156,15 @@ def _normalize_row(row: Dict[str, Any]) -> Dict[str, Any]:
 def run_inference(tickers: List[str]) -> List[Dict[str, Any]]:
     try:
         rows = _predict(tickers)
-        if hasattr(rows, "to_dict"):  # pandas dataframe
+        if hasattr(rows, "to_dict"):
             rows = rows.to_dict(orient="records")
         normed = [_normalize_row(r) for r in rows]
 
-        # Fill dates consistently if missing or malformed
+        # Enforce correct target date for every row (ignore whatever upstream sent)
         for r in normed:
-            if not r.get("date"):
-                # compute per ticker (crypto vs equities have different targets)
-                _, target = compute_dates_for_row(r.get("ticker", ""))
-                r["date"] = target
+            _, target = compute_dates_for_row(r.get("ticker", ""))
+            r["date"] = target
+
         return normed
     except Exception as e:
         print("[dashboard] predict_for_tickers failed:", e)
@@ -291,13 +275,13 @@ def write_outputs(rows: List[Dict[str, Any]]) -> None:
         base["arima_delta_pct"] = _to_float_or_none(r.get("arima_delta_pct"))
         base["live_price"]      = _to_float_or_none(r.get("live_price"))
 
-        # Ensure date exists & is YYYY-MM-DD
+        # Ensure date exists & is YYYY-MM-DD (enforce again)
         if not base.get("date"):
             _, target = compute_dates_for_row(base.get("ticker", ""))
             base["date"] = target
         norm.append(base)
 
-    # derived job-level "as_of" (max of row as_of as ISO string if present)
+    # derived model "as_of" (max of row as_of as ISO if present)
     as_of_values = [r.get("as_of") for r in norm if r.get("as_of")]
     model_as_of = max(as_of_values) if as_of_values else GENERATED_AT
 
@@ -312,7 +296,7 @@ def write_outputs(rows: List[Dict[str, Any]]) -> None:
                 return datetime.datetime.min
     norm.sort(key=lambda r: (_safe_datekey(r.get("date","")), r.get("ticker","")), reverse=True)
 
-    # rounding for CSV/HTML readability (JSON keeps as provided here—already rounded)
+    # rounding for CSV/HTML readability
     for r in norm:
         if r.get("arima_pred") is not None:      r["arima_pred"]      = round(float(r["arima_pred"]), 3)
         if r.get("arima_delta_pct") is not None: r["arima_delta_pct"] = round(float(r["arima_delta_pct"]), 2)
@@ -357,7 +341,6 @@ def write_outputs(rows: List[Dict[str, Any]]) -> None:
     (PUBLIC / "data.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
     # ── HTML (static) ─────────────────────────────────────────────────────────
-    # Build rows (prob shown as percent; numeric rounding already applied)
     rows_html: List[str] = []
     for r in norm:
         pred = (r.get("prediction") or "").upper()
@@ -448,14 +431,14 @@ def main():
     tickers_env = os.getenv("TICKERS", ",".join(DEFAULT_TICKERS))
     tickers = [t.strip().upper() for t in tickers_env.split(",") if t.strip()]
 
-    # 1) predictions (normalized rows, target dates enforced)
+    # 1) predictions (normalized & target dates enforced)
     rows = run_inference(tickers)
 
     # 2) ARIMA map
     arima_map = load_arima_map()
     print("[dashboard] ARIMA tickers loaded:", len(arima_map), arima_map.keys())
 
-    # 3) merge ARIMA + live price + Δ%
+    # 3) merge ARIMA + live price + Δ% + enforce dates (safety double-lock)
     for r in rows:
         tkr = r.get("ticker")
         ref_price = r.get("price")
@@ -472,12 +455,10 @@ def main():
         lp = fetch_live_price(tkr, fallback=ref_price)
         r["live_price"] = lp if lp is not None else ref_price
 
-        # Ensure "date" is set according to ticker rules even if upstream provided something odd
-        if not r.get("date"):
-            _, target = compute_dates_for_row(tkr or "")
-            r["date"] = target
+        # Enforce target date (ignore upstream)
+        _, target = compute_dates_for_row(tkr or "")
+        r["date"] = target
 
-        # Ensure prediction text is canonical
         if r.get("prediction"):
             r["prediction"] = r["prediction"].upper()
 

@@ -1,21 +1,73 @@
-import pandas as pd, os
+from pathlib import Path
+import pandas as pd
 
-# features -> public
-feat_src = r"data/processed/prices_features.csv"
-feat_dst = r"data/processed/prices_features_public.csv"
-df = pd.read_csv(feat_src, parse_dates=["Date"])
-keep = ["AAPL", "INTC", "MSFT", "GOOGL", "TSLA", "AMZN", "NVDA", "META", "BTC-USD", "ETH-USD"] # edit as you like
-df = df[df["Ticker"].isin(keep)].sort_values(["Ticker","Date"]).groupby("Ticker").tail(1000)
-df.to_csv(feat_dst, index=False)
-print(" wrote", feat_dst, "rows:", len(df))
+# Project paths
+ROOT = Path(__file__).resolve().parents[1]
+DATA_PROCESSED = ROOT / "data" / "processed"
 
-# ARIMA -> public (accept a few column name variants)
-ar_src = r"data/processed/arima_results.csv"
-ar_dst = r"data/processed/arima_results_public.csv"
-if os.path.exists(ar_src):
-    ar = pd.read_csv(ar_src)
-    ar = ar.rename(columns={"Date":"ForecastDate", "PredClose":"PredictedClose"})
-    ar.to_csv(ar_dst, index=False)
-    print(" wrote", ar_dst, "rows:", len(ar))
-else:
-    print(" missing", ar_src)
+# ---- Settings ----
+TICKERS = [
+    "AAPL", "INTC", "MSFT", "GOOGL", "TSLA",
+    "AMZN", "NVDA", "META", "BTC-USD", "ETH-USD",
+]
+
+FEATURES_SRC = DATA_PROCESSED / "prices_features.csv"
+FEATURES_DST = DATA_PROCESSED / "prices_features_public.csv"
+
+ARIMA_SRC = DATA_PROCESSED / "arima_results.csv"
+ARIMA_DST = DATA_PROCESSED / "arima_results_public.csv"
+
+
+def build_public_features() -> None:
+    if not FEATURES_SRC.exists():
+        print(f"[features] missing {FEATURES_SRC}, skipping")
+        return
+
+    df = pd.read_csv(FEATURES_SRC, parse_dates=["Date"])
+
+    # Basic sanity checks
+    required_cols = {"Ticker", "Date"}
+    if not required_cols.issubset(df.columns):
+        print(f"[features] missing required columns {required_cols}, got {df.columns.tolist()}")
+        return
+
+    df = (
+        df[df["Ticker"].isin(TICKERS)]
+        .sort_values(["Ticker", "Date"])
+        .groupby("Ticker")
+        .tail(1000)
+        .reset_index(drop=True)
+    )
+
+    FEATURES_DST.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(FEATURES_DST, index=False)
+    print(f"[features] wrote {FEATURES_DST} rows: {len(df)}")
+
+
+def build_public_arima() -> None:
+    if not ARIMA_SRC.exists():
+        print(f"[arima] missing {ARIMA_SRC}, skipping")
+        return
+
+    ar = pd.read_csv(ARIMA_SRC)
+
+    # Rename with ignore so it doesn't blow up if names already changed
+    ar = ar.rename(
+        columns={
+            "Date": "ForecastDate",
+            "PredClose": "PredictedClose",
+        }
+    )
+
+    ARIMA_DST.parent.mkdir(parents=True, exist_ok=True)
+    ar.to_csv(ARIMA_DST, index=False)
+    print(f"[arima] wrote {ARIMA_DST} rows: {len(ar)}")
+
+
+def main() -> None:
+    build_public_features()
+    build_public_arima()
+
+
+if __name__ == "__main__":
+    main()

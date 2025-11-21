@@ -97,6 +97,9 @@ _USERAGENT_FEATURE_MAPPINGS = {
     'CREDENTIALS_HTTP': 'z',
     'CREDENTIALS_IMDS': '0',
     'BEARER_SERVICE_ENV_VARS': '3',
+    'CLI_V1_TO_V2_MIGRATION_DEBUG_MODE': '-',
+    'CREDENTIALS_PROFILE_LOGIN': 'AC',
+    'CREDENTIALS_LOGIN': 'AD',
 }
 
 
@@ -607,9 +610,10 @@ class UserAgentString:
         User-Agent header.
         """
         if self._client_config and self._client_config.user_agent_appid:
-            return [
-                UserAgentComponent('app', self._client_config.user_agent_appid)
-            ]
+            appid = sanitize_user_agent_string_component(
+                raw_str=self._client_config.user_agent_appid, allow_hash=True
+            )
+            return [RawStringUserAgentComponent(f'app/{appid}')]
         else:
             return []
 

@@ -15,45 +15,63 @@ if str(PROJECT_ROOT) not in sys.path:
 # project imports
 from modeling.ml_direction_classifier import predict_for_tickers as _predict
 
+
 # ── Settings / constants ───────────────────────────────────────────────────────
 ROOT   = PROJECT_ROOT
 PUBLIC = ROOT / "public"
 
+# Override with env: TICKERS="AAPL,MSFT,TSLA,GOOGL,BTC-USD"
 DEFAULT_TICKERS = [
     "AAPL", "INTC", "MSFT", "GOOGL", "TSLA",
     "AMZN", "NVDA", "META", "BTC-USD", "ETH-USD"
 ]
 
+# Single source of "generated at" truth (UTC ISO)
 GENERATED_AT = datetime.datetime.utcnow().replace(microsecond=0).isoformat() + "Z"
 
+# Explicit labels embedded in JSON rows
 PREDICTION_TARGET        = "Tomorrow Close (next trading session)"
 REFERENCE_PRICE_BASIS    = "Last completed session close (Adj Close for equities; Close for crypto)"
 ARIMA_FORECAST_BASIS     = "Tomorrow Close (ARIMA t+1)"
 ARIMA_DELTA_DEFINITION   = "Percent change ((ARIMA - Reference Close) / Reference Close * 100)"
 
+
 # ── Helpers ────────────────────────────────────────────────────────────────────
+
 def is_crypto_ticker(ticker: str) -> bool:
     t = (ticker or "").upper()
+    # Extend if you add more crypto tickers
     return t in {"BTC-USD", "ETH-USD"}
 
 def next_trading_weekday(d: datetime.date) -> datetime.date:
+    """
+    Return the next weekday (Mon–Fri). Simple weekend skip (no holiday calendar).
+    If d is Fri/Sat/Sun → Monday; else → d+1.
+    """
     wd = d.weekday()  # Mon=0..Sun=6
     if wd >= 4:
         return d + datetime.timedelta(days=7 - wd)
     return d + datetime.timedelta(days=1)
 
 def compute_dates_for_row(ticker: str) -> Tuple[str, str]:
+    """
+    Returns (as_of_local_date_str, target_date_str) both YYYY-MM-DD.
+    - as_of_local: Asia/Riyadh calendar date (human-friendly). Falls back to UTC if pytz missing.
+    - target_date: crypto → UTC + 1 day; equities → next trading weekday.
+    """
     try:
         import pytz
         tz_riyadh = pytz.timezone("Asia/Riyadh")
         as_of_local = datetime.datetime.now(tz_riyadh).date()
     except Exception:
         as_of_local = datetime.datetime.utcnow().date()
+
     today_utc = datetime.datetime.utcnow().date()
     if is_crypto_ticker(ticker):
         target_date = today_utc + datetime.timedelta(days=1)
     else:
         target_date = next_trading_weekday(today_utc)
+
     return as_of_local.strftime("%Y-%m-%d"), target_date.strftime("%Y-%m-%d")
 
 def _to_float_or_none(x: Any) -> Optional[float]:
@@ -68,6 +86,10 @@ def _to_float_or_none(x: Any) -> Optional[float]:
         return None
 
 def _normalize_probability(p: Any) -> Optional[float]:
+    """
+    Normalize probability to 0..1 (float).
+    Accepts 0..1 floats, '57.9%' strings, or 0..100 numbers (assumed percent).
+    """
     if p is None:
         return None
     s = str(p).strip()
@@ -84,7 +106,7 @@ def _normalize_probability(p: Any) -> Optional[float]:
 def _fmt_prob_pct(p: Any) -> str:
     try:
         v = float(p)
-        if v <= 1.0:
+        if v <= 1.0:  # assume 0..1
             return f"{v*100:.1f}%"
         return f"{v:.1f}%"
     except Exception:
@@ -99,44 +121,32 @@ def _fmt_num(x: Any, nd: int = 2) -> str:
     except Exception:
         return ""
 
-def fetch_actual_close_for_date(ticker: str, ymd: str) -> Optional[float]:
-    try:
-        import yfinance as yf
-        target = datetime.datetime.strptime(ymd, "%Y-%m-%d").date()
-        today  = datetime.date.today()
-        if target >= today:
-            return None
-        start = target
-        end   = target + datetime.timedelta(days=1)
-        hist = yf.download(ticker, start=start.isoformat(), end=end.isoformat(), progress=False)
-        if isinstance(hist, pd.DataFrame) and not hist.empty and "Close" in hist.columns:
-            return float(hist["Close"].iloc[-1])
-    except Exception as e:
-        print(f"[dashboard] fetch_actual_close_for_date failed for {ticker} {ymd}: {e}")
-    return None
-
-def compute_point_accuracy(pred: Optional[float], actual: Optional[float]) -> Tuple[Optional[float], Optional[float]]:
-    if pred is None or actual in (None, 0):
-        return None, None
-    abs_err = abs(float(pred) - float(actual))
-    acc = 100.0 - (abs_err / float(actual) * 100.0)
-    return max(min(acc, 100.0), 0.0), abs_err
 
 # ── Core pipeline steps ───────────────────────────────────────────────────────
+
 def _normalize_row(row: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Normalize a model row into canonical fields and inject semantic labels.
+    """
     out: Dict[str, Any] = {}
+
     out["ticker"] = str(row.get("ticker") or row.get("symbol") or "").upper()
     out["date"] = str(row.get("date") or row.get("target_date") or row.get("prediction_date") or "")
+
     pred = (row.get("prediction") or row.get("signal") or row.get("label") or "")
     if not pred and isinstance(row.get("pred"), str):
         pred = row["pred"]
     out["prediction"] = str(pred).upper() if pred else ""
+
     out["probability"] = _normalize_probability(
         row.get("probability", row.get("confidence", row.get("prob")))
     )
+
     price = row.get("price") or row.get("close") or row.get("ref_price") or row.get("AdjClose")
     out["price"] = _to_float_or_none(price)
+
     out["as_of"] = row.get("as_of") or GENERATED_AT
+
     out["prediction_target"]       = PREDICTION_TARGET
     out["reference_price_basis"]   = REFERENCE_PRICE_BASIS
     out["arima_forecast_basis"]    = ARIMA_FORECAST_BASIS
@@ -149,9 +159,12 @@ def run_inference(tickers: List[str]) -> List[Dict[str, Any]]:
         if hasattr(rows, "to_dict"):
             rows = rows.to_dict(orient="records")
         normed = [_normalize_row(r) for r in rows]
+
+        # Enforce correct target date for every row (ignore whatever upstream sent)
         for r in normed:
             _, target = compute_dates_for_row(r.get("ticker", ""))
             r["date"] = target
+
         return normed
     except Exception as e:
         print("[dashboard] predict_for_tickers failed:", e)
@@ -159,7 +172,10 @@ def run_inference(tickers: List[str]) -> List[Dict[str, Any]]:
         raise
 
 def load_arima_map() -> Dict[str, float]:
+    """Return {TICKER: predicted_close} from ARIMA_PUBLIC_PATH or arima_grid_*.csv."""
     path = os.getenv("ARIMA_PUBLIC_PATH") or str(ROOT / "data" / "processed" / "arima_results_public.csv")
+
+    # single csv
     if os.path.exists(path):
         try:
             df = pd.read_csv(path)
@@ -181,6 +197,8 @@ def load_arima_map() -> Dict[str, float]:
                 }
         except Exception as e:
             print(f"[dashboard] ARIMA load error ({path}): {e}")
+
+    # grid fallbacks
     out: Dict[str, float] = {}
     try:
         pattern = str(ROOT / "data" / "processed" / "arima_grid_*.csv")
@@ -228,7 +246,9 @@ def fetch_live_price(ticker: str, fallback: Optional[float] = None) -> Optional[
         print(f"[dashboard] yfinance failed for {ticker}: {e}")
         return fallback
 
+
 # ── Output writers ────────────────────────────────────────────────────────────
+
 CSV_FIELDS = [
     "Generated_At",
     "Target_Date",
@@ -239,57 +259,33 @@ CSV_FIELDS = [
     "ARIMA_Predicted_Price_TomorrowClose",
     "ARIMA_Change_Pct",
     "Live_Price",
-    "Actual_Close",
-    "Accuracy_Pct",
-    "Absolute_Error",
     "Prediction_Target",
     "Reference_Price_Basis",
     "ARIMA_Forecast_Basis"
 ]
 
-def _append_accuracy_log(rows: List[Dict[str,Any]]) -> None:
-    path = PUBLIC / "accuracy_log.csv"
-    new_rows = [
-        {
-            "Target_Date": r.get("date",""),
-            "Ticker": r.get("ticker",""),
-            "ARIMA_Pred": r.get("arima_pred"),
-            "Actual_Close": r.get("actual_close"),
-            "Accuracy_Pct": r.get("accuracy_pct"),
-            "Absolute_Error": r.get("absolute_error"),
-            "Generated_At": GENERATED_AT
-        }
-        for r in rows if r.get("actual_close") is not None
-    ]
-    if not new_rows:
-        return
-    write_header = not path.exists()
-    with open(path, "a", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=list(new_rows[0].keys()))
-        if write_header:
-            w.writeheader()
-        w.writerows(new_rows)
-
 def write_outputs(rows: List[Dict[str, Any]]) -> None:
     PUBLIC.mkdir(exist_ok=True)
 
+    # normalize + keep ARIMA/live fields, coercing to floats
     norm: List[Dict[str, Any]] = []
     for r in rows:
         base = _normalize_row(r)
         base["arima_pred"]      = _to_float_or_none(r.get("arima_pred"))
         base["arima_delta_pct"] = _to_float_or_none(r.get("arima_delta_pct"))
         base["live_price"]      = _to_float_or_none(r.get("live_price"))
-        base["actual_close"]    = _to_float_or_none(r.get("actual_close"))
-        base["accuracy_pct"]    = _to_float_or_none(r.get("accuracy_pct"))
-        base["absolute_error"]  = _to_float_or_none(r.get("absolute_error"))
+
+        # Ensure date exists & is YYYY-MM-DD (enforce again)
         if not base.get("date"):
             _, target = compute_dates_for_row(base.get("ticker", ""))
             base["date"] = target
         norm.append(base)
 
+    # derived model "as_of" (max of row as_of as ISO if present)
     as_of_values = [r.get("as_of") for r in norm if r.get("as_of")]
     model_as_of = max(as_of_values) if as_of_values else GENERATED_AT
 
+    # sort stable: latest target date first, then ticker
     def _safe_datekey(s: str) -> datetime.datetime:
         try:
             return datetime.datetime.strptime(s, "%Y-%m-%d")
@@ -300,16 +296,15 @@ def write_outputs(rows: List[Dict[str, Any]]) -> None:
                 return datetime.datetime.min
     norm.sort(key=lambda r: (_safe_datekey(r.get("date","")), r.get("ticker","")), reverse=True)
 
+    # rounding for CSV/HTML readability
     for r in norm:
         if r.get("arima_pred") is not None:      r["arima_pred"]      = round(float(r["arima_pred"]), 3)
         if r.get("arima_delta_pct") is not None: r["arima_delta_pct"] = round(float(r["arima_delta_pct"]), 2)
         if r.get("live_price") is not None:      r["live_price"]      = round(float(r["live_price"]), 3)
-        if r.get("actual_close") is not None:    r["actual_close"]    = round(float(r["actual_close"]), 3)
-        if r.get("accuracy_pct") is not None:    r["accuracy_pct"]    = round(float(r["accuracy_pct"]), 2)
-        if r.get("absolute_error") is not None:  r["absolute_error"]  = round(float(r["absolute_error"]), 3)
         if r.get("price") is not None:           r["price"]           = round(float(r["price"]), 2)
-        if r.get("probability") is not None:     r["probability"]     = float(r["probability"])
+        if r.get("probability") is not None:     r["probability"]     = float(r["probability"])  # keep 0..1
 
+    # ── CSV ───────────────────────────────────────────────────────────────────
     csv_path = PUBLIC / "predictions.csv"
     with open(csv_path, "w", newline="", encoding="utf-8") as f:
         w = csv.DictWriter(f, fieldnames=CSV_FIELDS)
@@ -325,14 +320,12 @@ def write_outputs(rows: List[Dict[str, Any]]) -> None:
                 "ARIMA_Predicted_Price_TomorrowClose": r.get("arima_pred"),
                 "ARIMA_Change_Pct": r.get("arima_delta_pct"),
                 "Live_Price": r.get("live_price"),
-                "Actual_Close": r.get("actual_close"),
-                "Accuracy_Pct": r.get("accuracy_pct"),
-                "Absolute_Error": r.get("absolute_error"),
                 "Prediction_Target": r.get("prediction_target", PREDICTION_TARGET),
                 "Reference_Price_Basis": r.get("reference_price_basis", REFERENCE_PRICE_BASIS),
                 "ARIMA_Forecast_Basis": r.get("arima_forecast_basis", ARIMA_FORECAST_BASIS),
             })
 
+    # ── JSON (rich) ───────────────────────────────────────────────────────────
     data = {
         "generated_at": GENERATED_AT,
         "as_of": model_as_of,
@@ -347,6 +340,7 @@ def write_outputs(rows: List[Dict[str, Any]]) -> None:
     }
     (PUBLIC / "data.json").write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
+    # ── HTML (static) ─────────────────────────────────────────────────────────
     rows_html: List[str] = []
     for r in norm:
         pred = (r.get("prediction") or "").upper()
@@ -362,8 +356,6 @@ def write_outputs(rows: List[Dict[str, Any]]) -> None:
   <td class="right" title="{ARIMA_FORECAST_BASIS}">{_fmt_num(r.get('arima_pred'), 3)}</td>
   <td class="right" title="{ARIMA_DELTA_DEFINITION}">{delta_txt}</td>
   <td class="right">{_fmt_num(r.get('live_price'), 3)}</td>
-  <td class="right">{_fmt_num(r.get('actual_close'), 3)}</td>
-  <td class="right">{_fmt_num(r.get('accuracy_pct'), 2)}</td>
 </tr>""")
 
     rows_html = "\n".join(rows_html)
@@ -415,8 +407,6 @@ tr:hover td {{ background:#0e1525; }}
               <th class="right">ARIMA Pred (Tomorrow Close)</th>
               <th class="right">Δ% (ARIMA vs Ref)</th>
               <th class="right">Live Price</th>
-              <th class="right">Actual Close</th>
-              <th class="right">Accuracy (%)</th>
             </tr>
           </thead>
           <tbody>
@@ -434,18 +424,21 @@ tr:hover td {{ background:#0e1525; }}
     print(f"[dashboard] wrote {PUBLIC / 'data.json'}")
     print(f"[dashboard] wrote {PUBLIC / 'index.html'}")
 
-    _append_accuracy_log(norm)
 
 # ── Main ──────────────────────────────────────────────────────────────────────
+
 def main():
     tickers_env = os.getenv("TICKERS", ",".join(DEFAULT_TICKERS))
     tickers = [t.strip().upper() for t in tickers_env.split(",") if t.strip()]
 
+    # 1) predictions (normalized & target dates enforced)
     rows = run_inference(tickers)
 
+    # 2) ARIMA map
     arima_map = load_arima_map()
     print("[dashboard] ARIMA tickers loaded:", len(arima_map), arima_map.keys())
 
+    # 3) merge ARIMA + live price + Δ% + enforce dates (safety double-lock)
     for r in rows:
         tkr = r.get("ticker")
         ref_price = r.get("price")
@@ -462,19 +455,16 @@ def main():
         lp = fetch_live_price(tkr, fallback=ref_price)
         r["live_price"] = lp if lp is not None else ref_price
 
+        # Enforce target date (ignore upstream)
         _, target = compute_dates_for_row(tkr or "")
         r["date"] = target
 
         if r.get("prediction"):
             r["prediction"] = r["prediction"].upper()
 
-        actual_close = fetch_actual_close_for_date(tkr, r["date"])
-        r["actual_close"] = actual_close
-        acc_pct, abs_err = compute_point_accuracy(r.get("arima_pred"), actual_close)
-        r["accuracy_pct"]  = acc_pct
-        r["absolute_error"] = abs_err
-
+    # 4) write artifacts
     write_outputs(rows)
+
 
 if __name__ == "__main__":
     main()
